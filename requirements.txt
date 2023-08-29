@@ -1,0 +1,8 @@
+# git+https://github.com/aereaux/python-musicbrainzngs.git
+fandom-py
+python-dateutil
+beautifulsoup4
+git+https://github.com/qwrwed/utils-python.git
+pyacoustid
+mutagen
+yt-dlp
