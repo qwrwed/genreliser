@@ -1,9 +1,11 @@
 import logging
+import re
 import time
-from functools import cached_property
+from functools import cache, cached_property
 from os import PathLike
 from pathlib import Path
 from pprint import pprint
+from typing import Optional
 
 from acoustid_ import get_acoustid
 from env import ACOUSTID_API_KEY
@@ -17,12 +19,83 @@ print_std = print
 print = print_tqdm
 
 
+class BaseGenreliser:
+    title_pattern: Optional[str] = None
+
+    def __init__(self) -> None:
+        self.genres_to_files = {}
+        self.files_without_genres = set()
+
+        self.artists_to_files = {}
+        self.files_without_artists = set()
+
+        self.files_to_titles = {}
+        self.files_without_titles = set()
+
+        self.retrieved_fields = {}
+
+        self.file_cache: dict[Path, MusicFile] = {}
+
+    @property
+    def results(self):
+        return {
+            "genres_to_files": self.genres_to_files,
+            "files_without_genres": list(self.files_without_genres),
+            "artists_to_files": self.artists_to_files,
+            "files_without_artists": list(self.files_without_artists),
+            "files_to_titles": {str(k): v for k, v in self.files_to_titles.items()},
+            "files_without_titles": list(self.files_without_titles),
+        }
+
+    def get_fields_from_description(self, description: str):
+        self.retrieved_fields["description"] = {}
+
+    def get_fields(self, filepath: Path):
+        self.set_fields_from_title(filepath)
+        self.get_fields_from_description(filepath)
+        self.get_fields_from_acousticbrainz(filepath)
+        self.get_fields_from_musicbrainz(filepath)
+
+    def genrelise_file(self, filepath: Path):
+        LOGGER.info(filepath)
+        if filepath.suffix != ".m4a":
+            # not implemented
+            return
+        music_file = MusicFile(filepath, genreliser=self)
+        print(f"{music_file.fields_from_acousticbrainz=}")
+        print(f"{music_file.fields_from_musicbrainz=}")
+        print(f"{music_file.fields_from_title=}")
+        # print(music_file)
+        # pprint(dict(tags))
+        # self.get_fields()
+        exit()
+
+    def genrelise_path(self, path: PathLike):
+        return run_on_path(
+            path,
+            file_callback=self.genrelise_file,
+            # dir_callback=self.run_on_dir,
+        )
+
+    def run_on_file(self, file: PathLike):
+        if not isinstance(file, Path):
+            file = Path(file)
+        time.sleep(0.1)
+        return f"f {file.stem=}"
+
+    def run_on_dir(self, file: PathLike):
+        if not isinstance(file, Path):
+            file = Path(file)
+        return f"d {file.stem=}"
+
+
 class MusicFile:
-    def __init__(self, filepath: Path) -> None:
+    def __init__(self, filepath: Path, genreliser: BaseGenreliser) -> None:
         self.filepath = filepath
+        self.genreliser = genreliser
         self.tags = EasyMP4(self.filepath)
-        self.tag_title = self.tags["title"]
-        self.tag_description = self.tags["description"]
+        self.tag_title: str = self.tags["title"][0]
+        self.tag_description: str = self.tags["description"][0]
 
     @cached_property
     def acoustid(self):
@@ -117,77 +190,22 @@ class MusicFile:
         }
         return res_tags_processed
 
-
-class BaseGenreliser:
-    def __init__(self) -> None:
-        self.genres_to_files = {}
-        self.files_without_genres = set()
-
-        self.artists_to_files = {}
-        self.files_without_artists = set()
-
-        self.files_to_titles = {}
-        self.files_without_titles = set()
-
-        self.retrieved_fields = {}
-
-        self.file_cache: dict[Path, MusicFile] = {}
-
-    @property
-    def results(self):
-        return {
-            "genres_to_files": self.genres_to_files,
-            "files_without_genres": list(self.files_without_genres),
-            "artists_to_files": self.artists_to_files,
-            "files_without_artists": list(self.files_without_artists),
-            "files_to_titles": {str(k): v for k, v in self.files_to_titles.items()},
-            "files_without_titles": list(self.files_without_titles),
-        }
-
-    def get_fields_from_title(self, path: Path):
-        self.retrieved_fields["title"] = {}
-
-    def get_fields_from_description(self, description: str):
-        self.retrieved_fields["description"] = {}
-
-    def get_fields_from_acousticbrainz(self, acoustid: str):
-        self.retrieved_fields["acousticbrainz"] = {}
-
-    def get_fields_from_musicbrainz(self, acoustid: str):
-        self.retrieved_fields["musicbrainz"] = {}
-
-    def get_fields(self, filepath: Path):
-        self.get_fields_from_title(filepath)
-        self.get_fields_from_description(filepath)
-        self.get_fields_from_acousticbrainz(filepath)
-        self.get_fields_from_musicbrainz(filepath)
-
-    def genrelise_file(self, filepath: Path):
-        LOGGER.info(filepath)
-        if filepath.suffix != ".m4a":
-            # not implemented
+    @cached_property
+    def fields_from_title(self):
+        title_pattern = self.genreliser.title_pattern
+        if title_pattern is None:
             return
-        music_file = MusicFile(filepath)
-        print(music_file.fields_from_acousticbrainz)
-        print(music_file.fields_from_musicbrainz)
-        # pprint(dict(tags))
-        # self.get_fields()
-        exit()
-
-    def genrelise_path(self, path: PathLike):
-        return run_on_path(
-            path,
-            file_callback=self.genrelise_file,
-            # dir_callback=self.run_on_dir,
-        )
-
-    def run_on_file(self, file: PathLike):
-        if not isinstance(file, Path):
-            file = Path(file)
-        time.sleep(0.1)
-        return f"f {file.stem=}"
-
-    def run_on_dir(self, file: PathLike):
-        if not isinstance(file, Path):
-            file = Path(file)
-        return f"d {file.stem=}"
+        match = re.search(title_pattern, self.tag_title)
+        fields_from_title = {}
+        for field_name in ["genre", "artist", "title", "extra"]:
+            try:
+                field_match = match.group(field_name)
+            except IndexError:
+                if field_name != "extra":
+                    LOGGER.warning(
+                        f"pattern {title_pattern!r} has no field {field_name}"
+                    )
+                continue
+            if field_match := match.group(field_name):
+                fields_from_title[f"{field_name}s"] = [field_match]
+        return fields_from_title

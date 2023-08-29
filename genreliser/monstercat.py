@@ -1,13 +1,20 @@
 import re
 from functools import cache
+from pathlib import Path
 
-from base import BaseGenreliser
+from base import BaseGenreliser, MusicFile
 
 # from unsorted import TagNotFoundError
 from utils import ensure_caps
+from utils_python.tqdm import print_tqdm
+
+print_std = print
+print = print_tqdm
 
 
 class MonstercatGenreliser(BaseGenreliser):
+    title_pattern = "^(?:\[(?P<genre>.*?)\] )?(?:(?:[-:] )?(?P<artist>.*?) - )?(?P<title>.*?)(?: \[(?P<extra>.*)\])?$"
+
     def get_fields_from_wiki(self):
         self.retrieved_fields["wiki"] = {}
 
