@@ -1,0 +1,9 @@
+[project]
+name = "genreliser"
+version = "0.1.0"
+
+[tool.setuptools]
+packages = ["genreliser"]
+
+[project.scripts]
+genrelise = "genreliser.__main__:main"

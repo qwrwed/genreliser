@@ -1,10 +1,13 @@
 import json
 import logging
+import platform
+import sys
 import time
 import urllib.request
+from collections.abc import Iterable
+from logging.config import fileConfig
 from os import PathLike
 from pathlib import Path
-from pprint import pprint
 from typing import Any, Callable, Optional
 from urllib.error import HTTPError
 
@@ -13,6 +16,29 @@ from utils_python.main import dump_data
 from yt_dlp.utils import sanitize_filename
 
 LOGGER = logging.getLogger("genreliser")
+
+
+def setup_excepthook(logger: logging.Logger):
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        else:
+            logger.critical(
+                "Exception occured:", exc_info=(exc_type, exc_value, exc_traceback)
+            )
+
+    sys.excepthook = handle_exception
+
+
+def setup_logging(config_path: Path) -> None:
+    if not config_path.is_file():
+        path = config_path if config_path.is_absolute() else config_path.resolve()
+        raise FileNotFoundError(f"No such file or directory: '{path}")
+    fileConfig(config_path, disable_existing_loggers=False)
+
+
+def get_platform() -> str:
+    return platform.system().lower()
 
 
 def dump_html(html):
@@ -56,16 +82,17 @@ def run_on_path(
 ):
     if not isinstance(path, Path):
         path = Path(path)
+    path_results: dict[str, Any]
     if path.is_file():
         path_results = {"is_dir": False}
         if file_callback is not None:
             path_results["result"] = file_callback(path)
         return {path: path_results}
-    elif path.is_dir():
+    if path.is_dir():
         path_results = {"is_dir": True}
         if dir_callback is not None:
             path_results["result"] = dir_callback(path)
-        subpath_results = {}
+        subpath_results: dict[Path, dict[str, Any]] = {}
         subpaths = list(path.iterdir())
         with tqdm(subpaths, leave=depth == 0) as pbar:
             for i, subpath in enumerate(pbar):
@@ -79,16 +106,16 @@ def run_on_path(
             pbar.set_description(repr(path))
         path_results["contents"] = subpath_results
         return {path: path_results}
-    else:
-        raise TypeError(f"{path=!r} was not a file or a dir")
+    raise TypeError(f"{path=!r} was not a file or a dir")
 
 
-last_requests = {}
+last_requests: dict[str | None, float] = {}
 
 
 def get_from_url(url: str, src_key: str | None = None):
     LOGGER.info(f"requesting {url}")
     last_request = last_requests.get(src_key)
+    # TODO: remove src_key, get website from url instead
     if last_request is not None and time.time() - last_request <= 1:
         time.sleep(1)
     while True:
@@ -106,16 +133,45 @@ def get_from_url(url: str, src_key: str | None = None):
             if exc.code == 429:  # TOO_MANY_REQUESTS
                 time.sleep(1)
                 continue
-            elif exc.code == 404:  # NOT_FOUND
+            if exc.code == 404:  # NOT_FOUND
                 return None
-            else:
-                LOGGER.info(
-                    f"unhandled HTTP error code={exc.code!r} msg={exc.msg!r} url={exc.url!r}"
-                )
-                breakpoint()
-                return None
+            LOGGER.info(
+                f"unhandled HTTP error code={exc.code!r} msg={exc.msg!r} url={exc.url!r}"
+            )
+            breakpoint()
+            return None
     res_str = res_bytes.decode()
     try:
         return json.loads(res_str)
     except json.decoder.JSONDecodeError:
         return res_str
+
+
+def is_iterable(obj, excluded_types=None):
+    if excluded_types is None:
+        excluded_types = [str]
+    return isinstance(obj, Iterable) and not isinstance(obj, excluded_types)
+
+
+def combine_listdicts(*listdicts: dict[str, list | str | dict]):
+    if len(listdicts) == 1:
+        listdicts = listdicts[0]
+    combined: dict[str, list | str] = {}
+    for listdict in listdicts:
+        for k, v in listdict.items():
+            if isinstance(v, list) and isinstance(combined.get(k, []), list):
+                existing = combined.setdefault(k, [])
+                new = [ve for ve in v if ve not in existing and ve is not None]
+                existing.extend(new)
+            elif isinstance(v, dict) and isinstance(combined.get(k, []), dict):
+                existing = combined.setdefault(k, {})
+                new = combine_listdicts(existing, v)
+                existing.update(new)
+            else:
+                if k in combined:
+                    raise ValueError(
+                        f"cannot combine {k}:{v} as it conflicts with existing {k}: {combined.get(k)}"
+                    )
+                if v is not None:
+                    combined[k] = v
+    return combined

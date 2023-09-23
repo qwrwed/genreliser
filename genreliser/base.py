@@ -1,17 +1,20 @@
+from __future__ import annotations
+
 import logging
 import re
 import time
-from functools import cache, cached_property
+from functools import cached_property
 from os import PathLike
 from pathlib import Path
-from pprint import pprint
-from typing import Optional
+from pprint import pformat
+from typing import Generic, Optional, TypeVar
 
-from acoustid_ import get_acoustid
-from env import ACOUSTID_API_KEY
 from mutagen.easymp4 import EasyMP4
-from utils import get_from_url, run_on_path
 from utils_python.tqdm import print_tqdm
+
+from genreliser.acoustid_ import get_acoustid
+from genreliser.resolve import resolve_genre_list
+from genreliser.utils import combine_listdicts, get_from_url, run_on_path
 
 LOGGER = logging.getLogger("genreliser")
 
@@ -19,10 +22,20 @@ print_std = print
 print = print_tqdm
 
 
+def pprint(x):
+    print(pformat(x))
+
+
+PATTERN_GENRE_FROM_DESCRIPTION = r"^.*?Genre:\s*(?P<genres>.+?)\s*$"
+PATTERN_GENRES_FROM_LINE = r"#(\w+)"
+
+
 class BaseGenreliser:
     title_pattern: Optional[str] = None
+    description_pattern_genre: str = PATTERN_GENRE_FROM_DESCRIPTION
 
     def __init__(self) -> None:
+        self.music_file_type = MusicFile
         self.genres_to_files = {}
         self.files_without_genres = set()
 
@@ -32,9 +45,7 @@ class BaseGenreliser:
         self.files_to_titles = {}
         self.files_without_titles = set()
 
-        self.retrieved_fields = {}
-
-        self.file_cache: dict[Path, MusicFile] = {}
+        # self.file_cache: dict[Path, MusicFile] = {}
 
     @property
     def results(self):
@@ -47,28 +58,22 @@ class BaseGenreliser:
             "files_without_titles": list(self.files_without_titles),
         }
 
-    def get_fields_from_description(self, description: str):
-        self.retrieved_fields["description"] = {}
-
-    def get_fields(self, filepath: Path):
-        self.set_fields_from_title(filepath)
-        self.get_fields_from_description(filepath)
-        self.get_fields_from_acousticbrainz(filepath)
-        self.get_fields_from_musicbrainz(filepath)
-
     def genrelise_file(self, filepath: Path):
-        LOGGER.info(filepath)
         if filepath.suffix != ".m4a":
             # not implemented
             return
-        music_file = MusicFile(filepath, genreliser=self)
-        print(f"{music_file.fields_from_acousticbrainz=}")
-        print(f"{music_file.fields_from_musicbrainz=}")
-        print(f"{music_file.fields_from_title=}")
-        # print(music_file)
-        # pprint(dict(tags))
-        # self.get_fields()
-        exit()
+        LOGGER.info(filepath)
+        music_file = self.music_file_type(filepath, genreliser=self)
+        music_file.get_fields_from_sources()
+        # fields_from_sources = music_file.get_fields_from_sources()
+        pprint(music_file.fields_from_sources)
+        pprint(music_file.fields_combined)
+        # breakpoint()
+        # if fields_from_sources:
+        #     print(filepath)
+        #     print(pformat(fields_from_sources))
+        #     print()
+        # exit()
 
     def genrelise_path(self, path: PathLike):
         return run_on_path(
@@ -89,13 +94,39 @@ class BaseGenreliser:
         return f"d {file.stem=}"
 
 
-class MusicFile:
-    def __init__(self, filepath: Path, genreliser: BaseGenreliser) -> None:
+def get_aliases_musicbrainz(d: dict, fields: list[str] | None = None):
+    if fields is None:
+        fields = [
+            "name",
+            # "sort-name",
+        ]
+    aliases = []
+    for alias_data in d["aliases"]:
+        for field in fields:
+            if (alias := alias_data.get(field)) is not None and alias not in aliases:
+                aliases.append(alias_data[field])
+    return aliases
+
+
+GenreliserType = TypeVar("GenreliserType", bound=BaseGenreliser)
+
+
+class MusicFile(Generic[GenreliserType]):
+    def __init__(self, filepath: Path, genreliser: GenreliserType) -> None:
         self.filepath = filepath
         self.genreliser = genreliser
         self.tags = EasyMP4(self.filepath)
         self.tag_title: str = self.tags["title"][0]
         self.tag_description: str = self.tags["description"][0]
+        self.acoustid_fields = {}
+        self.sources = [
+            # "acousticbrainz",
+            "musicbrainz",
+            "title",
+            "description",
+            # "tags",
+        ]
+        self.genre_exclusions = set()
 
     @cached_property
     def acoustid(self):
@@ -116,9 +147,9 @@ class MusicFile:
                 "genre",
                 "album",
                 "albumartist",
-                "artist",
+                # "artist", # single string incl. "feat"
+                "artists",
                 "date",
-                "genre",
                 "title",
                 "label",
                 "file_name",
@@ -126,7 +157,9 @@ class MusicFile:
                 continue
             if not isinstance(v, list):
                 v = [v]
-            res_tags_filtered[f"{k}s"] = v
+            if not k.endswith("s"):
+                k = f"{k}s"
+            res_tags_filtered[k] = v
         return res_tags_filtered
 
     @cached_property
@@ -160,26 +193,17 @@ class MusicFile:
         # includes = ["genres", "artists", "isrcs"]
         url = f"https://musicbrainz.org/ws/2/recording/{self.acoustid}?inc={'+'.join(includes)}&fmt=json"
         res_json = get_from_url(url, src_key="musicbrainz")
-        title_aliases = []
-        for alias in res_json.get("aliases", []):
-            for field in ["name"]:  # TODO: add "sort-name"?
-                if alias.get(field) is not None and field not in title_aliases:
-                    title_aliases.append(alias[field])
-        artists = []
-        artist_aliases = {}
-        for artist_credit in res_json["artist-credit"]:
-            artist_name = artist_credit["name"]
-            artists.append(artist_name)
-            artist_aliases[artist_name] = []
-            for alias in artist_credit["artist"]["aliases"]:
-                artist_aliases[artist_name].append(alias["name"])
+        title_aliases = get_aliases_musicbrainz(res_json)
         res_tags_processed = {
             # "mbid": res_json["id"],
             # "isrcs": res_json["isrcs"],
             "artists": [
                 artist_credit["name"] for artist_credit in res_json["artist-credit"]
             ],
-            "artist-aliases": artist_aliases,
+            "artist-aliases": {
+                artist_credit["name"]: get_aliases_musicbrainz(artist_credit["artist"])
+                for artist_credit in res_json["artist-credit"]
+            },
             "titles": [res_json["title"]],
             "title-aliases": title_aliases,
             "genres": [genre["name"] for genre in res_json["genres"]],
@@ -191,13 +215,56 @@ class MusicFile:
         return res_tags_processed
 
     @cached_property
+    def fields_from_description(self):
+        match = re.search(
+            self.genreliser.description_pattern_genre,
+            self.tag_description,
+            flags=re.MULTILINE,
+        )
+        if "genre" in self.tag_description.lower():
+            # LOGGER.info(self.tag_description)
+            # breakpoint()
+            pass
+        if not match:
+            return {}
+        genre_line = match.group(1)
+        if "#" in genre_line:
+            genre_list = re.findall(PATTERN_GENRES_FROM_LINE, genre_line)
+        else:
+            genre_list = [genre_line]
+        return {
+            "genres": genre_list,
+        }
+
+    @cached_property
+    def fields_from_tags(self):
+        fields = {}
+        for field_name in ["genre", "artist", "title"]:
+            field_name_plural = f"{field_name}s"
+            if field_name in self.tags:
+                fields[field_name_plural] = self.tags[field_name]
+            elif field_name_plural in self.tags:
+                fields[field_name_plural] = self.tags[field_name_plural]
+        return fields
+
+    @cached_property
     def fields_from_title(self):
+        fields_from_title = {}
         title_pattern = self.genreliser.title_pattern
         if title_pattern is None:
-            return
-        match = re.search(title_pattern, self.tag_title)
-        fields_from_title = {}
-        for field_name in ["genre", "artist", "title", "extra"]:
+            return fields_from_title
+        extras = []
+
+        def capture_and_kill(match: re.Match):
+            # https://stackoverflow.com/a/36196325
+            extras.extend([m for m in match.groups() if m is not None])
+            return ""
+
+        tag_title_no_extras = re.sub(
+            r"\s+\[([^\]]+)]|\s+\(([^)]+)\)", capture_and_kill, self.tag_title
+        )
+        match = re.search(title_pattern, tag_title_no_extras)
+        for field_name in ["genre", "artist", "title"]:
             try:
                 field_match = match.group(field_name)
             except IndexError:
@@ -208,4 +275,40 @@ class MusicFile:
                 continue
             if field_match := match.group(field_name):
                 fields_from_title[f"{field_name}s"] = [field_match]
+        extras_categorised = {}
+        for extra in extras:
+            if "release" in extra.lower():
+                extras_categorised.setdefault("release", []).append(extra)
+            elif "feat." in extra.lower():
+                extras_categorised.setdefault("feat", []).append(extra)
+            elif "mix" in extra.lower():
+                extras_categorised.setdefault("remix", []).append(extra)
+            else:
+                extras_categorised.setdefault(None, []).append(extra)
+        fields_from_title["extras"] = extras_categorised
         return fields_from_title
+
+    def get_fields_from_sources(self):
+        fields = {
+            source: fields
+            for source in self.sources
+            if (fields := getattr(self, f"fields_from_{source}")) is not None
+        }
+        return fields
+
+    @property
+    def fields_from_sources(self):
+        return {
+            key: value
+            for key in [f"fields_from_{source}" for source in self.sources]
+            if (value := self.__dict__.get(key)) is not None
+        }
+
+    @property
+    def fields_combined(self):
+        fields_combined = combine_listdicts(self.fields_from_sources.values())
+        genres_resolved = resolve_genre_list(
+            fields_combined.get("genres", []), self.genre_exclusions
+        )
+        fields_combined["genres"] = genres_resolved
+        return fields_combined

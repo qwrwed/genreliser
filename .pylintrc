@@ -190,7 +190,8 @@ good-names=i,
            k,
            ex,
            Run,
-           _
+           _,
+           v
 
 # Good variable names regexes, separated by a comma. If names match any regex,
 # they will always be accepted
@@ -327,7 +328,8 @@ overgeneral-exceptions=builtins.BaseException,builtins.Exception
 expected-line-ending-format=
 
 # Regexp for a line that is allowed to be longer than the limit.
-ignore-long-lines=^\s*(# )?<?https?://\S+>?$
+; ignore-long-lines=^\s*(# )?<?https?://\S+>?$
+ignore-long-lines=^\s*(# )?<?https?://\S+>?$|^\s*(\w*\s*=\s*)?(\"|\').*(\"|\'),?\s*$
 
 # Number of spaces of indent required inside a hanging or continued line.
 indent-after-paren=4
@@ -429,6 +431,11 @@ disable=raw-checker-failed,
         useless-suppression,
         deprecated-pragma,
         use-symbolic-message-instead,
+        missing-module-docstring,
+        missing-class-docstring,
+        missing-function-docstring,
+        logging-fstring-interpolation,
+        forgotten-debug-statement,
 
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
