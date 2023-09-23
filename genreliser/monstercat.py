@@ -143,11 +143,11 @@ def get_titles_from_monstercat_wiki_html(html: str):
     for sub_soup in main_soup.find_all(attrs={"data-source": "Name"}):
         for content in sub_soup.contents:
             if content not in results:
-                results.append(content)
+                if isinstance(content, str):
+                    results.append(content)
     if len(results) > 1:
         LOGGER.warning("multiple titles found on wiki: %s", results)
-        breakpoint()
-        ...
+        results = ["".join(results)]
     return results
 
 

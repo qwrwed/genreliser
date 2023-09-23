@@ -15,7 +15,9 @@ def main():
     for path in args.paths:
         LOGGER.info(f"{path=}")
         genreliser.genrelise_path(
-            path, failed_files_output_path=args.failed_files_output_path
+            path,
+            json_data_output_path=args.json_data_output_path,
+            failed_files_output_path=args.failed_files_output_path,
         )
 
 

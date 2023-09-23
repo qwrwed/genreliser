@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -59,12 +60,31 @@ class BaseGenreliser:
         }
 
     def genrelise_file(
-        self, filepath: Path, failed_files_output_path: Path | None = None
+        self,
+        filepath: Path,
+        json_data_output_path: Path | None = None,
+        failed_files_output_path: Path | None = None,
+        overwrite=False,
     ):
         if filepath.suffix != ".m4a":
             # not implemented
             return
         LOGGER.info(filepath)
+
+        filepath_str = str(filepath)
+        if json_data_output_path:
+            try:
+                with open(json_data_output_path) as fp:
+                    existing_data = json.load(fp)
+            except (FileNotFoundError, json.decoder.JSONDecodeError):
+                existing_data = {}
+
+            if not overwrite and filepath_str in existing_data:
+                LOGGER.info(
+                    "%r already in %r. Skipping...", filepath_str, json_data_output_path
+                )
+                return
+
         music_file = self.music_file_type(filepath, genreliser=self)
         try:
             music_file.get_fields_from_sources()
@@ -73,9 +93,27 @@ class BaseGenreliser:
             if failed_files_output_path:
                 with open(failed_files_output_path, "a") as f:
                     f.write(str(filepath) + "\n")
+            return
         # fields_from_sources = music_file.get_fields_from_sources()
         pprint(music_file.fields_from_sources)
-        pprint(music_file.fields_combined)
+        pprint(fields_combined := music_file.fields_combined)
+        if json_data_output_path:
+            if (file_data := existing_data.get(filepath_str)) is not None:
+                if overwrite == False:
+                    LOGGER.warning(
+                        "overwrite is False but we did not skip %r - please investigate",
+                        filepath_str,
+                    )
+                LOGGER.warning(
+                    "%s already in %s; it will be overwritten",
+                    filepath,
+                    json_data_output_path,
+                )
+                LOGGER.debug("overwriting %s with %s", file_data, fields_combined)
+
+            existing_data[filepath_str] = fields_combined
+            with open(json_data_output_path, "w") as fp:
+                json.dump(existing_data, fp, indent=4)
         # breakpoint()
         # if fields_from_sources:
         #     print(filepath)
@@ -84,10 +122,15 @@ class BaseGenreliser:
         # exit()
 
     def genrelise_path(
-        self, path: PathLike, failed_files_output_path: PathLike | None = None
+        self,
+        path: PathLike,
+        json_data_output_path: PathLike | None = None,
+        failed_files_output_path: PathLike | None = None,
     ):
         genrelise_file_write_failures = partial(
-            self.genrelise_file, failed_files_output_path=failed_files_output_path
+            self.genrelise_file,
+            json_data_output_path=json_data_output_path,
+            failed_files_output_path=failed_files_output_path,
         )
         return run_on_path(
             path,

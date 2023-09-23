@@ -12,10 +12,13 @@ class ArgsNamespace(argparse.Namespace):
     dry_run: bool
     logging_config_path: Path
     batch_file: Path | None
+    json_data_output_path: Path
     failed_files_output_path: Path
 
 
 def get_args():
+    now_str = datetime.datetime.now().strftime(r"%Y-%m-%dT%H-%M-%S")
+
     parser = argparse.ArgumentParser()
 
     path_group = parser.add_mutually_exclusive_group(required=True)
@@ -48,13 +51,20 @@ def get_args():
         "--execute",
         dest="dry_run",
         action="store_false",
-        help="actually update metadata",
+        help="update metadata in files (will dry-run if not provided)",
     )
 
     parser.add_argument(
+        "-j",
+        "--json-data-output-path",
+        default=f"data/data_{now_str}.json",
+        type=Path,
+        help="file to write retrieved data to (default: %(default)r)",
+    )
+    parser.add_argument(
         "-f",
         "--failed-files-output-path",
-        default=datetime.datetime.now().strftime(r"data/failed_%Y-%m-%dT%H-%M-%S.txt"),
+        default=f"data/failed_{now_str}.txt",
         type=Path,
         help="file to write failed paths to (default: %(default)r)",
     )
