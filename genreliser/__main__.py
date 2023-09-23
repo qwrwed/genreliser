@@ -11,9 +11,10 @@ def main():
     args = get_args()
     setup_logging(args.logging_config_path)
     setup_excepthook(LOGGER)
-    LOGGER.info(f"{args.path=}")
     genreliser = MonstercatGenreliser()
-    genreliser.genrelise_path(args.path)
+    for path in args.paths:
+        LOGGER.info(f"{path=}")
+        genreliser.genrelise_path(path)
 
 
 if __name__ == "__main__":
