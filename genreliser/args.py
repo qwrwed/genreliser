@@ -5,9 +5,10 @@ from genreliser.utils import get_platform
 
 
 class ArgsNamespace(argparse.Namespace):
-    path: Path
+    paths: list[Path]
     dry_run: bool
     logging_config_path: Path
+    batch_file: Path | None
 
 
 def str_upper(value):
@@ -16,7 +17,24 @@ def str_upper(value):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", type=Path, default="./testing", nargs="?")
+
+    path_group = parser.add_mutually_exclusive_group(required=True)
+    path_group.add_argument(
+        "paths",
+        metavar="FILES_OR_FOLDERS",
+        type=Path,
+        nargs="*",
+        default=[],
+        help="path(s) to music file(s) or folder(s)",
+    )
+    path_group.add_argument(
+        "-a",
+        "--batch-file",
+        metavar="PATH",
+        type=Path,
+        help="path to text file containing one music file path per line",
+    )
+
     parser.add_argument(
         "-e",
         "--execute",
@@ -24,6 +42,7 @@ def get_args():
         action="store_false",
         help="actually update metadata",
     )
+
     parser.add_argument(
         "-l",
         "--logging-config-path",
@@ -31,4 +50,12 @@ def get_args():
         help="Path to logging config file (default: %(default)r)",
         type=Path,
     )
-    return parser.parse_args(namespace=ArgsNamespace())
+
+    args = parser.parse_args(namespace=ArgsNamespace())
+
+    if args.batch_file is not None:
+        with open(args.batch_file) as f:
+            args.paths.extend([Path(line.strip()) for line in f.readlines()])
+        args.batch_file = None
+
+    return args
