@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from functools import cached_property
+from functools import cached_property, partial
 from os import PathLike
 from pathlib import Path
 from pprint import pformat
@@ -58,13 +58,21 @@ class BaseGenreliser:
             "files_without_titles": list(self.files_without_titles),
         }
 
-    def genrelise_file(self, filepath: Path):
+    def genrelise_file(
+        self, filepath: Path, failed_files_output_path: Path | None = None
+    ):
         if filepath.suffix != ".m4a":
             # not implemented
             return
         LOGGER.info(filepath)
         music_file = self.music_file_type(filepath, genreliser=self)
-        music_file.get_fields_from_sources()
+        try:
+            music_file.get_fields_from_sources()
+        except Exception as exc:
+            LOGGER.exception(exc)
+            if failed_files_output_path:
+                with open(failed_files_output_path, "a") as f:
+                    f.write(str(filepath) + "\n")
         # fields_from_sources = music_file.get_fields_from_sources()
         pprint(music_file.fields_from_sources)
         pprint(music_file.fields_combined)
@@ -75,10 +83,15 @@ class BaseGenreliser:
         #     print()
         # exit()
 
-    def genrelise_path(self, path: PathLike):
+    def genrelise_path(
+        self, path: PathLike, failed_files_output_path: PathLike | None = None
+    ):
+        genrelise_file_write_failures = partial(
+            self.genrelise_file, failed_files_output_path=failed_files_output_path
+        )
         return run_on_path(
             path,
-            file_callback=self.genrelise_file,
+            file_callback=genrelise_file_write_failures,
             # dir_callback=self.run_on_dir,
         )
 

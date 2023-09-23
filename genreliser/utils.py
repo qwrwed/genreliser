@@ -37,6 +37,10 @@ def setup_logging(config_path: Path) -> None:
     fileConfig(config_path, disable_existing_loggers=False)
 
 
+def str_upper(value):
+    return str(value).upper()
+
+
 def get_platform() -> str:
     return platform.system().lower()
 

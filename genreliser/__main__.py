@@ -14,7 +14,9 @@ def main():
     genreliser = MonstercatGenreliser()
     for path in args.paths:
         LOGGER.info(f"{path=}")
-        genreliser.genrelise_path(path)
+        genreliser.genrelise_path(
+            path, failed_files_output_path=args.failed_files_output_path
+        )
 
 
 if __name__ == "__main__":

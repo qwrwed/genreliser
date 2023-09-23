@@ -1,5 +1,8 @@
 import argparse
+import datetime
 from pathlib import Path
+
+from utils_python.main import deduplicate
 
 from genreliser.utils import get_platform
 
@@ -9,10 +12,7 @@ class ArgsNamespace(argparse.Namespace):
     dry_run: bool
     logging_config_path: Path
     batch_file: Path | None
-
-
-def str_upper(value):
-    return str(value).upper()
+    failed_files_output_path: Path
 
 
 def get_args():
@@ -36,6 +36,14 @@ def get_args():
     )
 
     parser.add_argument(
+        "-l",
+        "--logging-config-path",
+        default=f"config/logging_{get_platform()}.cfg",
+        help="Path to logging config file (default: %(default)r)",
+        type=Path,
+    )
+
+    parser.add_argument(
         "-e",
         "--execute",
         dest="dry_run",
@@ -44,18 +52,20 @@ def get_args():
     )
 
     parser.add_argument(
-        "-l",
-        "--logging-config-path",
-        default=f"config/logging-{get_platform()}.cfg",
-        help="Path to logging config file (default: %(default)r)",
+        "-f",
+        "--failed-files-output-path",
+        default=datetime.datetime.now().strftime(r"data/failed_%Y-%m-%dT%H-%M-%S.txt"),
         type=Path,
+        help="file to write failed paths to (default: %(default)r)",
     )
 
     args = parser.parse_args(namespace=ArgsNamespace())
 
     if args.batch_file is not None:
         with open(args.batch_file) as f:
-            args.paths.extend([Path(line.strip()) for line in f.readlines()])
+            args.paths.extend(
+                deduplicate([Path(line.strip()) for line in f.readlines()])
+            )
         args.batch_file = None
 
     return args
