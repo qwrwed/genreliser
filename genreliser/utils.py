@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import json
 import logging
 import platform
@@ -17,6 +18,26 @@ from yt_dlp.utils import sanitize_filename
 
 LOGGER = logging.getLogger("genreliser")
 
+@contextmanager
+def write_at_exit(obj, filepath: Path | str, indent: int | None = 4):
+    if not isinstance(filepath, Path):
+        filepath = Path(filepath)
+    if not filepath.parent.is_dir():
+        raise NotADirectoryError(filepath)
+    LOGGER.info(f"write_at_exit(): will write {type(obj)} to {filepath}")
+    try:
+        yield
+    finally:
+        LOGGER.info(f"write_at_exit: writing {truncate_str(str(obj), 30)} to {filepath}")
+        with open(filepath, "w") as fp:
+            json.dump(obj, fp, indent=indent)
+
+def truncate_str(s: str, max_length: int, end="..."):
+    if max_length <= len(end):
+        raise ValueError(f"truncate_str(): {max_length=} must be greater than {len(end)=}")
+    if len(s) > max_length:
+        return s[:max_length-len(end)] + end
+    return s
 
 def setup_excepthook(logger: logging.Logger):
     def handle_exception(exc_type, exc_value, exc_traceback):
