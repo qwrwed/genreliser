@@ -63,9 +63,10 @@ def get_acoustid(filepath):
 
         best_aid = max(scores, key=scores.get)
         if scores[best_aid] == 0:
-            LOGGER.warning(scores)
+            LOGGER.warning("scores=%s", scores)
             LOGGER.warning("no acoustID match!")
-            breakpoint()
+            raise AcoustIDNotFoundError()
+            # breakpoint()
         aid_score, res_acoustid, title, artist = ids[best_aid]
     elif len(candidates) == 1:
         aid_score, res_acoustid, title, artist = candidates[0]
