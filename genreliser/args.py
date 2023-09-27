@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import json
 from pathlib import Path
 
 from utils_python.main import deduplicate
@@ -14,6 +15,8 @@ class ArgsNamespace(argparse.Namespace):
     batch_file: Path | None
     json_data_output_path: Path
     failed_files_output_path: Path
+    retry_failed: bool | None
+    overwrite: bool
 
 
 def get_args():
@@ -62,20 +65,45 @@ def get_args():
         help="file to write retrieved data to (default: %(default)r)",
     )
     parser.add_argument(
+        "-o",
+        "--overwrite",
+        action="store_true",
+        help="overwrite existing files if present",
+    )
+
+    parser.add_argument(
         "-f",
         "--failed-files-output-path",
-        default=f"data/failed_{now_str}.txt",
+        default=f"data/failed_{now_str}.json",
         type=Path,
         help="file to write failed paths to (default: %(default)r)",
     )
 
+    handle_failed_group = parser.add_mutually_exclusive_group()
+    handle_failed_group.add_argument(
+        "-r", "--retry-failed", action="store_const", const=True, dest="retry_failed"
+    )
+    handle_failed_group.add_argument(
+        "-s", "--skip-failed", action="store_const", const=False, dest="retry_failed"
+    )
+
     args = parser.parse_args(namespace=ArgsNamespace())
+
+    if args.retry_failed:
+        raise NotImplementedError()
 
     if args.batch_file is not None:
         with open(args.batch_file) as f:
-            args.paths.extend(
-                deduplicate([Path(line.strip()) for line in f.readlines()])
-            )
+            file_lines = f.readlines()
+            try:
+                paths = json.loads(" ".join(file_lines))
+                if not isinstance(paths, list):
+                    raise ValueError(
+                        f"Expected list from {args.batch_file}, got {type(paths)}"
+                    )
+            except json.decoder.JSONDecodeError:
+                paths = [line.strip() for line in file_lines]
+            args.paths.extend([Path(path) for path in deduplicate(paths)])
         args.batch_file = None
 
     return args

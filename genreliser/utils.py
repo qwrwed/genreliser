@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 import json
 import logging
 import platform
@@ -6,6 +5,7 @@ import sys
 import time
 import urllib.request
 from collections.abc import Iterable
+from contextlib import contextmanager
 from logging.config import fileConfig
 from os import PathLike
 from pathlib import Path
@@ -18,26 +18,50 @@ from yt_dlp.utils import sanitize_filename
 
 LOGGER = logging.getLogger("genreliser")
 
+
 @contextmanager
-def write_at_exit(obj, filepath: Path | str, indent: int | None = 4):
+def write_at_exit(
+    obj, filepath: Path | str | None, indent: int | None = 4, overwrite=False
+):
+    if filepath is None:
+        yield
+        return
+
     if not isinstance(filepath, Path):
         filepath = Path(filepath)
+
     if not filepath.parent.is_dir():
         raise NotADirectoryError(filepath)
+
+    if filepath.exists():
+        if overwrite:
+            LOGGER.warning(
+                "write_at_exit(): file %s exists and will be overwritten", filepath
+            )
+        else:
+            raise FileExistsError(filepath)
     LOGGER.info(f"write_at_exit(): will write {type(obj)} to {filepath}")
+
     try:
         yield
+
     finally:
-        LOGGER.info(f"write_at_exit: writing {truncate_str(str(obj), 30)} to {filepath}")
+        LOGGER.info(
+            f"write_at_exit: writing {truncate_str(str(obj), 30)} to {filepath}"
+        )
         with open(filepath, "w") as fp:
             json.dump(obj, fp, indent=indent)
 
+
 def truncate_str(s: str, max_length: int, end="..."):
     if max_length <= len(end):
-        raise ValueError(f"truncate_str(): {max_length=} must be greater than {len(end)=}")
+        raise ValueError(
+            f"truncate_str(): {max_length=} must be greater than {len(end)=}"
+        )
     if len(s) > max_length:
-        return s[:max_length-len(end)] + end
+        return s[: max_length - len(end)] + end
     return s
+
 
 def setup_excepthook(logger: logging.Logger):
     def handle_exception(exc_type, exc_value, exc_traceback):
