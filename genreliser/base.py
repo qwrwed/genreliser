@@ -7,7 +7,7 @@ from functools import cached_property, partial
 from os import PathLike
 from pathlib import Path
 from pprint import pformat
-from typing import Generic, Optional, TypeVar
+from typing import Generic, Literal, Optional, TypeVar
 
 from mutagen.easymp4 import EasyMP4
 from utils_python.tqdm import print_tqdm
@@ -34,7 +34,12 @@ class BaseGenreliser:
     title_pattern: Optional[str] = None
     description_pattern_genre: str = PATTERN_GENRE_FROM_DESCRIPTION
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        previous_failed_files=None,
+        previous_json_data=None,
+        retry: Literal["failed", "passed", "all"] | None = None,
+    ) -> None:
         self.music_file_type = MusicFile
         self.genres_to_files = {}
         self.files_without_genres = set()
@@ -45,8 +50,10 @@ class BaseGenreliser:
         self.files_to_titles = {}
         self.files_without_titles = set()
 
-        self.failed_files: list[str] = []
-        self.json_data: dict[str, dict] = {}
+        self.failed_files: list[Path] = previous_failed_files or []
+        self.json_data: dict[Path, dict] = previous_json_data or {}
+
+        self.retry = retry
 
         # self.file_cache: dict[Path, MusicFile] = {}
 
@@ -64,12 +71,27 @@ class BaseGenreliser:
     def genrelise_file(
         self,
         filepath: Path,
-        retry_failed: bool | None = None,
     ):
         if filepath.suffix != ".m4a":
             # not implemented
             return
-        LOGGER.info(filepath)
+        LOGGER.info("genrelise_file running on %s", filepath)
+
+        if filepath in self.failed_files and self.retry not in {"failed", "all"}:
+            LOGGER.info(
+                "skipping %s: already in self.failed_files and self.retry=%s",
+                filepath,
+                self.retry,
+            )
+            return
+
+        if filepath in self.json_data and self.retry not in {"passed", "all"}:
+            LOGGER.info(
+                "skipping %s: already in self.json_data and self.retry=%s",
+                filepath,
+                self.retry,
+            )
+            return
 
         filepath_str = str(filepath)
 
@@ -96,15 +118,10 @@ class BaseGenreliser:
     def genrelise_path(
         self,
         path: PathLike,
-        retry_failed: bool | None = None,
     ):
-        genrelise_file_write_failures = partial(
-            self.genrelise_file,
-            retry_failed=retry_failed,
-        )
         return run_on_path(
             path,
-            file_callback=genrelise_file_write_failures,
+            file_callback=self.genrelise_file,
             # dir_callback=self.run_on_dir,
         )
 

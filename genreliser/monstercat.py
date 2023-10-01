@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from fandom.error import PageError
 from utils_python.main import deduplicate
 from utils_python.tqdm import print_tqdm
+from utils_python.typing import copy_signature
 
 from genreliser.base import BaseGenreliser, MusicFile
 from genreliser.utils import ensure_caps, get_from_url
@@ -159,8 +160,9 @@ Url = str
 class MonstercatGenreliser(BaseGenreliser):
     title_pattern = PATTERN_FIELDS_FROM_TITLE
 
-    def __init__(self) -> None:
-        super().__init__()
+    @copy_signature(BaseGenreliser.__init__)
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
         self.music_file_type = MonstercatMusicFile
         self.wiki_resolutions = {}  # type: dict[tuple[Title, Artist], Url]
 

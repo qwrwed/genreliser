@@ -13,15 +13,27 @@ from typing import Any, Callable, Optional
 from urllib.error import HTTPError
 
 from tqdm import tqdm
-from utils_python.main import dump_data
+from utils_python.main import deduplicate, dump_data, serialize_data
 from yt_dlp.utils import sanitize_filename
 
 LOGGER = logging.getLogger("genreliser")
 
 
+def noop(*_args, **_kwargs):
+    pass
+
+
+def identity(e):
+    return e
+
+
 @contextmanager
 def write_at_exit(
-    obj, filepath: Path | str | None, indent: int | None = 4, overwrite=False
+    obj,
+    filepath: Path | str | None,
+    indent: int | None = 4,
+    overwrite: bool = False,
+    default_encode: Callable = str,
 ):
     if filepath is None:
         yield
@@ -46,11 +58,9 @@ def write_at_exit(
         yield
 
     finally:
-        LOGGER.info(
-            f"write_at_exit: writing {truncate_str(str(obj), 30)} to {filepath}"
-        )
-        with open(filepath, "w") as fp:
-            json.dump(obj, fp, indent=indent)
+        obj_str = truncate_str(str(obj), 30)
+        LOGGER.info(f"write_at_exit: writing {obj_str} to {filepath}")
+        dump_data(serialize_data(obj, indent=indent, default=default_encode), filepath)
 
 
 def truncate_str(s: str, max_length: int, end="..."):
@@ -63,10 +73,13 @@ def truncate_str(s: str, max_length: int, end="..."):
     return s
 
 
-def setup_excepthook(logger: logging.Logger):
+def setup_excepthook(logger: logging.Logger, keyboardinterrupt_log_str):
     def handle_exception(exc_type, exc_value, exc_traceback):
         if issubclass(exc_type, KeyboardInterrupt):
-            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            if keyboardinterrupt_log_str:
+                logger.info(keyboardinterrupt_log_str)
+            else:
+                sys.__excepthook__(exc_type, exc_value, exc_traceback)
         else:
             logger.critical(
                 "Exception occured:", exc_info=(exc_type, exc_value, exc_traceback)
@@ -119,8 +132,64 @@ def sort_dict(d, sortkey=lambda x: x):
     return {key: dict(sorted(d[key].items(), key=sortkey)) for key in sorted(d)}
 
 
-def noop(*_args, **_kwargs):
-    pass
+def read_list_from_file(
+    filepath: Path, element_fn=identity, deduplicate_list=True, optional=True
+):
+    if not filepath.is_file():
+        if optional:
+            return []
+        raise FileNotFoundError(f"Tried to read from {filepath}, but it was not a file")
+
+    with open(filepath) as f:
+        file_lines_str = f.readlines()
+
+    try:
+        file_lines_list = json.loads(" ".join(file_lines_str))
+        if not isinstance(file_lines_list, list):
+            raise ValueError(
+                f"Expected list from {filepath}, got {type(file_lines_list)}"
+            )
+    except json.decoder.JSONDecodeError:
+        file_lines_list = [line.strip() for line in file_lines_str]
+
+    if deduplicate_list:
+        file_lines_list = deduplicate(file_lines_list)
+
+    results = []
+    for line in file_lines_list:
+        try:
+            result = element_fn(line)
+        except TypeError as exc:
+            raise TypeError(
+                f"Failed to call {element_fn.__name__ or element_fn}({line})"
+            ) from exc
+        results.append(result)
+
+    return results
+
+
+def read_dict_from_file(
+    filepath: Path, key_fn=identity, value_fn=identity, optional=True
+):
+    if not filepath.is_file():
+        if optional:
+            return {}
+        raise FileNotFoundError(f"Tried to read from {filepath}, but it was not a file")
+
+    with open(filepath) as f:
+        file_contents = f.read()
+
+    if not file_contents:
+        return {}
+
+    try:
+        json_data = json.loads(file_contents)
+    except json.decoder.JSONDecodeError as exc:
+        raise ValueError(f"Could not load {filepath} as JSON") from exc
+    if not isinstance(json_data, dict):
+        raise ValueError(f"Expected dict from {filepath}, got {type(json_data)}")
+
+    return {key_fn(key): value_fn(value) for key, value in json_data.items()}
 
 
 def run_on_path(

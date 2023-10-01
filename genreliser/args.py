@@ -1,11 +1,9 @@
 import argparse
 import datetime
-import json
 from pathlib import Path
+from typing import Literal
 
-from utils_python.main import deduplicate
-
-from genreliser.utils import get_platform
+from genreliser.utils import get_platform, read_list_from_file
 
 
 class ArgsNamespace(argparse.Namespace):
@@ -13,10 +11,9 @@ class ArgsNamespace(argparse.Namespace):
     dry_run: bool
     logging_config_path: Path
     batch_file: Path | None
-    json_data_output_path: Path
-    failed_files_output_path: Path
-    retry_failed: bool | None
-    overwrite: bool
+    json_data_path: Path
+    failed_files_path: Path
+    retry: Literal["failed", "passed", "all"] | None
 
 
 def get_args():
@@ -59,51 +56,34 @@ def get_args():
 
     parser.add_argument(
         "-j",
-        "--json-data-output-path",
+        "--json-data-path",
         default=f"data/data_{now_str}.json",
         type=Path,
         help="file to write retrieved data to (default: %(default)r)",
     )
-    parser.add_argument(
-        "-o",
-        "--overwrite",
-        action="store_true",
-        help="overwrite existing files if present",
-    )
 
     parser.add_argument(
         "-f",
-        "--failed-files-output-path",
+        "--failed-files-path",
         default=f"data/failed_{now_str}.json",
         type=Path,
         help="file to write failed paths to (default: %(default)r)",
     )
 
-    handle_failed_group = parser.add_mutually_exclusive_group()
-    handle_failed_group.add_argument(
-        "-r", "--retry-failed", action="store_const", const=True, dest="retry_failed"
+    parser.add_argument(
+        "-r",
+        "--retry",
+        choices={"failed", "passed", "all"},
+        type=lambda s: s.lower(),
+        help="retry some or all previous files",
     )
-    handle_failed_group.add_argument(
-        "-s", "--skip-failed", action="store_const", const=False, dest="retry_failed"
-    )
+
+    # TODO: readonly mode?
 
     args = parser.parse_args(namespace=ArgsNamespace())
 
-    if args.retry_failed:
-        raise NotImplementedError()
-
     if args.batch_file is not None:
-        with open(args.batch_file) as f:
-            file_lines = f.readlines()
-            try:
-                paths = json.loads(" ".join(file_lines))
-                if not isinstance(paths, list):
-                    raise ValueError(
-                        f"Expected list from {args.batch_file}, got {type(paths)}"
-                    )
-            except json.decoder.JSONDecodeError:
-                paths = [line.strip() for line in file_lines]
-            args.paths.extend([Path(path) for path in deduplicate(paths)])
+        args.paths.extend(read_list_from_file(args.batch_file, element_fn=Path))
         args.batch_file = None
 
     return args
