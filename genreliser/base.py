@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from functools import cached_property, partial
+from functools import cached_property
 from os import PathLike
 from pathlib import Path
 from pprint import pformat
@@ -28,6 +28,8 @@ def pprint(x):
 
 PATTERN_GENRE_FROM_DESCRIPTION = r"^.*?Genre:\s*(?P<genres>.+?)\s*$"
 PATTERN_GENRES_FROM_LINE = r"#(\w+)"
+
+SUPPORTED_SUFFIXES = {".m4a"}
 
 
 class BaseGenreliser:
@@ -72,18 +74,27 @@ class BaseGenreliser:
         self,
         filepath: Path,
     ):
-        if filepath.suffix != ".m4a":
-            # not implemented
-            return
         LOGGER.info("genrelise_file running on %s", filepath)
-
-        if filepath in self.failed_files and self.retry not in {"failed", "all"}:
-            LOGGER.info(
-                "skipping %s: already in self.failed_files and self.retry=%s",
+        if filepath.suffix not in SUPPORTED_SUFFIXES:
+            # not implemented
+            LOGGER.warning(
+                "%s: suffix %s not supported - must be in %s",
                 filepath,
-                self.retry,
+                filepath.suffix,
+                SUPPORTED_SUFFIXES,
             )
             return
+
+        if filepath in self.failed_files:
+            if self.retry in {"failed", "all"}:
+                self.failed_files.pop(self.failed_files.index(filepath))
+            else:
+                LOGGER.info(
+                    "skipping %s: already in self.failed_files and self.retry=%s",
+                    filepath,
+                    self.retry,
+                )
+                return
 
         if filepath in self.json_data and self.retry not in {"passed", "all"}:
             LOGGER.info(

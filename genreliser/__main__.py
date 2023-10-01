@@ -37,7 +37,6 @@ def main():
         default_encode=str,
     ):
         for path in args.paths:
-            LOGGER.info(f"{path=}")
             genreliser.genrelise_path(path)
 
 
