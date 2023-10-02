@@ -3,7 +3,7 @@ import datetime
 from pathlib import Path
 from typing import Literal
 
-from genreliser.utils import get_platform, read_list_from_file
+from utils_python import get_platform, read_list_from_file
 
 
 class ArgsNamespace(argparse.Namespace):

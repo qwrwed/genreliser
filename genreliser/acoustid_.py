@@ -3,9 +3,10 @@ import platform
 from functools import cache
 
 import acoustid
+from utils_python import make_get_request_to_url
 
 from genreliser.env import ACOUSTID_API_KEY
-from genreliser.utils import make_get_request_to_url, restrict_filename
+from genreliser.utils import restrict_filename
 
 LOGGER = logging.getLogger("genreliser")
 

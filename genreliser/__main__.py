@@ -1,22 +1,23 @@
 import logging
 from pathlib import Path
 
-from genreliser.args import get_args
-from genreliser.monstercat import MonstercatGenreliser
-from genreliser.utils import (
+from utils_python import (
     read_dict_from_file,
     read_list_from_file,
+    setup_config_logging,
     setup_excepthook,
-    setup_logging,
     write_at_exit,
 )
+
+from genreliser.args import get_args
+from genreliser.monstercat import MonstercatGenreliser
 
 LOGGER = logging.getLogger("genreliser")
 
 
 def main():
     args = get_args()
-    setup_logging(args.logging_config_path)
+    setup_config_logging(args.logging_config_path)
     setup_excepthook(LOGGER, "received KeyboardInterrupt; exiting.")
 
     previous_failed_files = read_list_from_file(args.failed_files_path, element_fn=Path)

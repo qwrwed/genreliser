@@ -1,9 +1,7 @@
 import re
 from functools import cache
 
-from utils_python.main import deduplicate
-
-from genreliser.utils import ensure_caps
+from utils_python import deduplicate, ensure_caps
 
 GENRE_SYNONYMS = {
     "Bass House": ["basshouse"],

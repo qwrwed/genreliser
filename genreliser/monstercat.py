@@ -10,12 +10,15 @@ from urllib.parse import quote, urlparse, urlunparse
 import fandom
 from bs4 import BeautifulSoup
 from fandom.error import PageError
-from utils_python.main import deduplicate
-from utils_python.tqdm import print_tqdm
-from utils_python.typing import copy_signature
+from utils_python import (
+    copy_signature,
+    deduplicate,
+    ensure_caps,
+    make_get_request_to_url,
+    print_tqdm,
+)
 
 from genreliser.base import BaseGenreliser, MusicFile
-from genreliser.utils import ensure_caps, make_get_request_to_url
 
 print_std = print
 print = print_tqdm

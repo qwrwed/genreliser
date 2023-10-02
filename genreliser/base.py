@@ -9,12 +9,16 @@ from pprint import pformat
 from typing import Generic, Literal, Optional, TypeVar
 
 from mutagen.easymp4 import EasyMP4
-from utils_python.logging import logPrefixFilter
-from utils_python.tqdm import print_tqdm
+from utils_python import (
+    logPrefixFilter,
+    make_get_request_to_url,
+    print_tqdm,
+    run_on_path,
+)
 
 from genreliser.acoustid_ import AcoustIDNotFoundError, get_acoustid
 from genreliser.resolve import resolve_genre_list
-from genreliser.utils import combine_listdicts, make_get_request_to_url, run_on_path
+from genreliser.utils import combine_listdicts
 
 LOGGER = logging.getLogger("genreliser")
 
@@ -95,15 +99,13 @@ class BaseGenreliser:
                 else:
                     LOGGER.info(
                         "skipping; already in self.failed_files and self.retry=%s",
-                        filepath,
                         self.retry,
                     )
                     return
 
             if filepath in self.json_data and self.retry not in {"passed", "all"}:
                 LOGGER.info(
-                    "skipping %s: already in self.json_data and self.retry=%s",
-                    filepath,
+                    "skipping; already in self.json_data and self.retry=%s",
                     self.retry,
                 )
                 return
