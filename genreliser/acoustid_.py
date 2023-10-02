@@ -5,7 +5,7 @@ from functools import cache
 import acoustid
 
 from genreliser.env import ACOUSTID_API_KEY
-from genreliser.utils import get_from_url, restrict_filename
+from genreliser.utils import make_get_request_to_url, restrict_filename
 
 LOGGER = logging.getLogger("genreliser")
 
@@ -16,7 +16,7 @@ class AcoustIDNotFoundError(acoustid.AcoustidError):
 
 def get_fpcalc_url():
     FALLBACK_URL = "https://github.com/acoustid/chromaprint/releases/latest"
-    res = get_from_url(
+    res = make_get_request_to_url(
         "https://api.github.com/repos/acoustid/chromaprint/releases/latest",
         src_key="github",
     )
@@ -46,6 +46,7 @@ def ensure_fpcalc():
 def get_acoustid(filepath):
     ensure_fpcalc()
     candidates = list(acoustid.match(ACOUSTID_API_KEY, filepath))
+    LOGGER.info("candidates = %s", candidates)
 
     if len(candidates) > 1:
         LOGGER.warning(f"multiple acoustIDs for {filepath}")

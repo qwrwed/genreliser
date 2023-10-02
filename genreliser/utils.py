@@ -7,7 +7,6 @@ import urllib.request
 from collections.abc import Iterable
 from contextlib import contextmanager
 from logging.config import fileConfig
-from os import PathLike
 from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.error import HTTPError
@@ -34,6 +33,7 @@ def write_at_exit(
     indent: int | None = 4,
     overwrite: bool = False,
     default_encode: Callable = str,
+    no_warning=False,
 ):
     if filepath is None:
         yield
@@ -47,19 +47,18 @@ def write_at_exit(
 
     if filepath.exists():
         if overwrite:
-            LOGGER.warning(
-                "write_at_exit(): file %s exists and will be overwritten", filepath
-            )
+            if not no_warning:
+                LOGGER.warning("file '%s' exists and will be overwritten", filepath)
         else:
             raise FileExistsError(filepath)
-    LOGGER.info(f"write_at_exit(): will write {type(obj)} to {filepath}")
+    LOGGER.info("will write %s to '%s'", type(obj), filepath)
 
     try:
         yield
 
     finally:
         obj_str = truncate_str(str(obj), 30)
-        LOGGER.info(f"write_at_exit: writing {obj_str} to {filepath}")
+        LOGGER.info(f"writing {obj_str} to {filepath}")
         dump_data(serialize_data(obj, indent=indent, default=default_encode), filepath)
 
 
@@ -88,7 +87,9 @@ def setup_excepthook(logger: logging.Logger, keyboardinterrupt_log_str):
     sys.excepthook = handle_exception
 
 
-def setup_logging(config_path: Path) -> None:
+def setup_logging(config_path: Path | str) -> None:
+    if not isinstance(config_path, Path):
+        config_path = Path(config_path)
     if not config_path.is_file():
         path = config_path if config_path.is_absolute() else config_path.resolve()
         raise FileNotFoundError(f"No such file or directory: '{path}")
@@ -193,7 +194,7 @@ def read_dict_from_file(
 
 
 def run_on_path(
-    path: PathLike,
+    path: Path,
     file_callback: Optional[Callable[[Path], Any]] = None,
     dir_callback: Optional[Callable[[Path], Any]] = None,
     depth=0,
@@ -230,8 +231,8 @@ def run_on_path(
 last_requests: dict[str | None, float] = {}
 
 
-def get_from_url(url: str, src_key: str | None = None):
-    LOGGER.info(f"requesting {url}")
+def make_get_request_to_url(url: str, src_key: str | None = None):
+    LOGGER.info(f"making GET request to {url}")
     last_request = last_requests.get(src_key)
     # TODO: remove src_key, get website from url instead
     if last_request is not None and time.time() - last_request <= 1:

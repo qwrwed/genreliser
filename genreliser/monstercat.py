@@ -15,7 +15,7 @@ from utils_python.tqdm import print_tqdm
 from utils_python.typing import copy_signature
 
 from genreliser.base import BaseGenreliser, MusicFile
-from genreliser.utils import ensure_caps, get_from_url
+from genreliser.utils import ensure_caps, make_get_request_to_url
 
 print_std = print
 print = print_tqdm
@@ -41,7 +41,7 @@ def get_monstercat_wiki_html(url: str):
     url_parsed = urlparse(url)
     path = quote(url_parsed.path)  # workaround for special characters in url
     url = urlunparse(url_parsed._replace(path=path))
-    html = get_from_url(url, "monstercat_wiki")
+    html = make_get_request_to_url(url, "monstercat_wiki")
     return html
 
 
@@ -74,7 +74,7 @@ def get_url_from_monstercat_wiki(
             except PageError as _exc2:
                 LOGGER.info(f"page not found: {title=}")
                 continue
-    LOGGER.info(f"{valid_title_pages.keys()=}")
+    # LOGGER.debug(f"{valid_title_pages.keys()=}")
     if not valid_title_pages:
         raise ValueError(f"Could not find page for {possible_titles=}")
 
@@ -94,7 +94,9 @@ def get_url_from_monstercat_wiki(
     if non_disam_count == 1:
         title = non_disam.pop()
         page = fandom.page(title)
-        return page.url
+        url = page.url
+        LOGGER.info("found URL: %s", url)
+        return url
 
     disam_count = len({t.lower() for t in disam})
     if disam_count > 1:
@@ -115,7 +117,9 @@ def get_url_from_monstercat_wiki(
         title = new_title
         try:
             page = fandom.page(title)
-            return page.url
+            url = page.url
+            LOGGER.info("found URL: %s", url)
+            return url
         except PageError as _exc:
             continue
     raise ValueError(
@@ -185,10 +189,12 @@ class MonstercatGenreliser(BaseGenreliser):
     def get_fields_from_monstercat_wiki(self, possible_titles, possible_artists):
         url = self.get_url_from_monstercat_wiki(possible_titles, possible_artists)
         html = get_monstercat_wiki_html(url)
-        return {
+        fields = {
             "titles": get_titles_from_monstercat_wiki_html(html),
             "genres": get_genres_from_monstercat_wiki_html(html),
         }
+        LOGGER.info("got fields from monstercat wiki: %s", fields)
+        return fields
 
 
 ARTIST_RENAMES = {"Splitbreed": "SPLITBREED"}
@@ -206,6 +212,14 @@ class MonstercatMusicFile(MusicFile[MonstercatGenreliser]):
     @cached_property
     def fields_from_wiki(self):
         fields_combined = self.fields_combined
+        for required_field in ["titles", "artists"]:
+            if required_field not in fields_combined:
+                LOGGER.error(
+                    "required field '%s' missing from fields_combined=%s",
+                    required_field,
+                    fields_combined,
+                )
+                return {}
         return self.genreliser.get_fields_from_monstercat_wiki(
             [fields_combined["titles"][0]], [fields_combined["artists"][0]]
         )

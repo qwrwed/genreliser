@@ -8,7 +8,7 @@ from genreliser.utils import get_platform, read_list_from_file
 
 class ArgsNamespace(argparse.Namespace):
     paths: list[Path]
-    dry_run: bool
+    # dry_run: bool
     logging_config_path: Path
     batch_file: Path | None
     json_data_path: Path
@@ -46,13 +46,13 @@ def get_args():
         type=Path,
     )
 
-    parser.add_argument(
-        "-e",
-        "--execute",
-        dest="dry_run",
-        action="store_false",
-        help="update metadata in files (will dry-run if not provided)",
-    )
+    # parser.add_argument(
+    #     "-e",
+    #     "--execute",
+    #     dest="dry_run",
+    #     action="store_false",
+    #     help="update metadata in files (will dry-run if not provided)",
+    # )
 
     parser.add_argument(
         "-j",

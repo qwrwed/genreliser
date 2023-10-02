@@ -20,8 +20,19 @@ def main():
     setup_excepthook(LOGGER, "received KeyboardInterrupt; exiting.")
 
     previous_failed_files = read_list_from_file(args.failed_files_path, element_fn=Path)
+    LOGGER.info(
+        "found %s previous_failed_files from '%s'",
+        len(previous_failed_files),
+        args.failed_files_path,
+    )
+
     previous_json_data = read_dict_from_file(args.json_data_path, key_fn=Path)
-    LOGGER.info(previous_failed_files)
+    LOGGER.info(
+        "found %s previous_json_data from '%s'",
+        len(previous_json_data),
+        args.json_data_path,
+    )
+
     genreliser = MonstercatGenreliser(
         previous_failed_files, previous_json_data, args.retry
     )

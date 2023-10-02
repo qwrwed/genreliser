@@ -4,17 +4,17 @@ import logging
 import re
 import time
 from functools import cached_property
-from os import PathLike
 from pathlib import Path
 from pprint import pformat
 from typing import Generic, Literal, Optional, TypeVar
 
 from mutagen.easymp4 import EasyMP4
+from utils_python.logging import logPrefixFilter
 from utils_python.tqdm import print_tqdm
 
-from genreliser.acoustid_ import get_acoustid
+from genreliser.acoustid_ import AcoustIDNotFoundError, get_acoustid
 from genreliser.resolve import resolve_genre_list
-from genreliser.utils import combine_listdicts, get_from_url, run_on_path
+from genreliser.utils import combine_listdicts, make_get_request_to_url, run_on_path
 
 LOGGER = logging.getLogger("genreliser")
 
@@ -29,7 +29,19 @@ def pprint(x):
 PATTERN_GENRE_FROM_DESCRIPTION = r"^.*?Genre:\s*(?P<genres>.+?)\s*$"
 PATTERN_GENRES_FROM_LINE = r"#(\w+)"
 
-SUPPORTED_SUFFIXES = {".m4a"}
+SUFFIX_TAG_FUNCTIONS = {".m4a": EasyMP4}
+
+
+class DataNotFoundError(Exception):
+    ...
+
+
+def get_tags(filepath: Path):
+    if (suffix_tag_function := SUFFIX_TAG_FUNCTIONS.get(filepath.suffix)) is None:
+        raise NotImplementedError(
+            f"{filepath.name}: suffix {filepath.suffix} not supported - must be in {SUFFIX_TAG_FUNCTIONS.keys}"
+        )
+    return suffix_tag_function(filepath)
 
 
 class BaseGenreliser:
@@ -74,61 +86,51 @@ class BaseGenreliser:
         self,
         filepath: Path,
     ):
-        LOGGER.info("genrelise_file running on %s", filepath)
-        if filepath.suffix not in SUPPORTED_SUFFIXES:
-            # not implemented
-            LOGGER.warning(
-                "%s: suffix %s not supported - must be in %s",
-                filepath,
-                filepath.suffix,
-                SUPPORTED_SUFFIXES,
-            )
-            return
+        with logPrefixFilter(LOGGER, msg_prefix=f"['{filepath.name}']: "):
+            LOGGER.info("starting...")
 
-        if filepath in self.failed_files:
-            if self.retry in {"failed", "all"}:
-                self.failed_files.pop(self.failed_files.index(filepath))
-            else:
+            if filepath in self.failed_files:
+                if self.retry in {"failed", "all"}:
+                    self.failed_files.pop(self.failed_files.index(filepath))
+                else:
+                    LOGGER.info(
+                        "skipping; already in self.failed_files and self.retry=%s",
+                        filepath,
+                        self.retry,
+                    )
+                    return
+
+            if filepath in self.json_data and self.retry not in {"passed", "all"}:
                 LOGGER.info(
-                    "skipping %s: already in self.failed_files and self.retry=%s",
+                    "skipping %s: already in self.json_data and self.retry=%s",
                     filepath,
                     self.retry,
                 )
                 return
 
-        if filepath in self.json_data and self.retry not in {"passed", "all"}:
-            LOGGER.info(
-                "skipping %s: already in self.json_data and self.retry=%s",
-                filepath,
-                self.retry,
-            )
-            return
+            filepath_str = str(filepath)
 
-        filepath_str = str(filepath)
+            music_file = self.music_file_type(filepath, genreliser=self)
 
-        music_file = self.music_file_type(filepath, genreliser=self)
+            try:
+                fields = music_file.get_fields_from_sources()
+                if not fields or not any(fields.values()):
+                    LOGGER.error(f"No data found")
+                    self.failed_files.append(str(filepath))
+                    return
+            except Exception as exc:
+                LOGGER.exception(exc, exc_info=not isinstance(exc, DataNotFoundError))
+                self.failed_files.append(str(filepath))
+                return
+            fields_combined = music_file.fields_combined
+            LOGGER.info("got combined fields: %s", fields_combined)
+            self.json_data[filepath_str] = fields_combined
 
-        try:
-            music_file.get_fields_from_sources()
-        except Exception as exc:
-            LOGGER.exception(exc)
-            self.failed_files.append(str(filepath))
-            return
-        # fields_from_sources = music_file.get_fields_from_sources()
-        pprint(music_file.fields_from_sources)
-        pprint(fields_combined := music_file.fields_combined)
-        self.json_data[filepath_str] = fields_combined
-
-        # breakpoint()
-        # if fields_from_sources:
-        #     print(filepath)
-        #     print(pformat(fields_from_sources))
-        #     print()
-        # exit()
+            LOGGER.info("...finished")
 
     def genrelise_path(
         self,
-        path: PathLike,
+        path: Path,
     ):
         return run_on_path(
             path,
@@ -136,13 +138,13 @@ class BaseGenreliser:
             # dir_callback=self.run_on_dir,
         )
 
-    def run_on_file(self, file: PathLike):
+    def run_on_file(self, file: Path):
         if not isinstance(file, Path):
             file = Path(file)
         time.sleep(0.1)
         return f"f {file.stem=}"
 
-    def run_on_dir(self, file: PathLike):
+    def run_on_dir(self, file: Path):
         if not isinstance(file, Path):
             file = Path(file)
         return f"d {file.stem=}"
@@ -166,33 +168,45 @@ GenreliserType = TypeVar("GenreliserType", bound=BaseGenreliser)
 
 
 class MusicFile(Generic[GenreliserType]):
-    def __init__(self, filepath: Path, genreliser: GenreliserType) -> None:
+    def __init__(
+        self,
+        filepath: Path,
+        genreliser: GenreliserType,
+        logger: logging.Logger = LOGGER,
+    ) -> None:
         self.filepath = filepath
+        self.logger = logger
         self.genreliser = genreliser
-        self.tags = EasyMP4(self.filepath)
+        self.tags = get_tags(self.filepath)
         self.tag_title: str = self.tags["title"][0]
         self.tag_description: str = self.tags["description"][0]
         self.acoustid_fields = {}
         self.sources = [
             # "acousticbrainz",
-            "musicbrainz",
+            # "musicbrainz",
             "title",
-            "description",
+            # "description",
             # "tags",
         ]
         self.genre_exclusions = set()
 
     @cached_property
     def acoustid(self):
-        self.acoustid_fields = get_acoustid(self.filepath)
-        return self.acoustid_fields["acoustid"]
+        try:
+            self.acoustid_fields = get_acoustid(self.filepath)
+            return self.acoustid_fields["acoustid"]
+        except AcoustIDNotFoundError as exc:
+            LOGGER.warning(exc, exc_info=1)
+            return None
 
     @cached_property
     def fields_from_acousticbrainz(self):
+        if self.acoustid is None:
+            return {}
         url = f"https://acousticbrainz.org/api/v1/{self.acoustid}/low-level"
-        res_json = get_from_url(url, src_key="acousticbrainz")
+        res_json = make_get_request_to_url(url, src_key="acousticbrainz")
         if res_json is None:
-            return {}, {}
+            return {}
         res_metadata = res_json["metadata"]
         res_tags_all = res_metadata["tags"]
         res_tags_filtered = {}
@@ -214,10 +228,13 @@ class MusicFile(Generic[GenreliserType]):
             if not k.endswith("s"):
                 k = f"{k}s"
             res_tags_filtered[k] = v
+        LOGGER.info("got fields from acousticbrainz: %s", res_tags_filtered)
         return res_tags_filtered
 
     @cached_property
     def fields_from_musicbrainz(self):
+        if self.acoustid is None:
+            return {}
         includes = [
             "artists",
             "releases",
@@ -246,7 +263,7 @@ class MusicFile(Generic[GenreliserType]):
         ]
         # includes = ["genres", "artists", "isrcs"]
         url = f"https://musicbrainz.org/ws/2/recording/{self.acoustid}?inc={'+'.join(includes)}&fmt=json"
-        res_json = get_from_url(url, src_key="musicbrainz")
+        res_json = make_get_request_to_url(url, src_key="musicbrainz")
         title_aliases = get_aliases_musicbrainz(res_json)
         res_tags_processed = {
             # "mbid": res_json["id"],
@@ -266,6 +283,7 @@ class MusicFile(Generic[GenreliserType]):
         res_tags_processed = {
             k: v for k, v in res_tags_processed.items() if v and set(v) != {None}
         }
+        LOGGER.info("got fields from musicbrainz: %s", res_tags_processed)
         return res_tags_processed
 
     @cached_property
@@ -286,9 +304,11 @@ class MusicFile(Generic[GenreliserType]):
             genre_list = re.findall(PATTERN_GENRES_FROM_LINE, genre_line)
         else:
             genre_list = [genre_line]
-        return {
+        res = {
             "genres": genre_list,
         }
+        LOGGER.info("got fields from description: %s", res)
+        return res
 
     @cached_property
     def fields_from_tags(self):
@@ -299,6 +319,7 @@ class MusicFile(Generic[GenreliserType]):
                 fields[field_name_plural] = self.tags[field_name]
             elif field_name_plural in self.tags:
                 fields[field_name_plural] = self.tags[field_name_plural]
+        LOGGER.info("got fields from tags: %s", fields)
         return fields
 
     @cached_property
@@ -340,9 +361,11 @@ class MusicFile(Generic[GenreliserType]):
             else:
                 extras_categorised.setdefault(None, []).append(extra)
         fields_from_title["extras"] = extras_categorised
+        LOGGER.info("got fields from title: %s", fields_from_title)
         return fields_from_title
 
     def get_fields_from_sources(self):
+        """generates fields"""
         fields = {
             source: fields
             for source in self.sources
@@ -352,6 +375,7 @@ class MusicFile(Generic[GenreliserType]):
 
     @property
     def fields_from_sources(self):
+        """retrieves already-generated fields"""
         return {
             key: value
             for key in [f"fields_from_{source}" for source in self.sources]
@@ -364,5 +388,6 @@ class MusicFile(Generic[GenreliserType]):
         genres_resolved = resolve_genre_list(
             fields_combined.get("genres", []), self.genre_exclusions
         )
-        fields_combined["genres"] = genres_resolved
+        if genres_resolved:
+            fields_combined["genres"] = genres_resolved
         return fields_combined
