@@ -6,6 +6,17 @@ from yt_dlp.utils import sanitize_filename
 LOGGER = logging.getLogger("genreliser")
 
 
+def ensure_one(l, allow_zero=False):
+    if len(l) > 1:
+        raise NotImplementedError(f"Cannot handle list of length > 1: {l}")
+    elif len(l) < 1:
+        if allow_zero:
+            return None
+        else:
+            raise NotImplementedError(f"Cannot handle list of length < 1: {l}")
+    return l[0]
+
+
 def dump_html(html):
     dump_data(html, "tmp.html")
 
