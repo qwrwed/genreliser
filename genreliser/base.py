@@ -343,6 +343,8 @@ class MusicFile(Generic[GenreliserType]):
         tag_title_no_extras = re.sub(
             r"\s+\[([^\]]+)]|\s+\(([^)]+)\)", capture_and_kill, self.tag_title
         )
+        while "  " in tag_title_no_extras:
+            tag_title_no_extras = tag_title_no_extras.replace("  ", " ")
         match = re.search(title_pattern, tag_title_no_extras)
         for field_name in ["genre", "artist", "title"]:
             try:
@@ -355,6 +357,10 @@ class MusicFile(Generic[GenreliserType]):
                 continue
             if field_match := match.group(field_name):
                 fields_from_title[f"{field_name}s"] = [field_match]
+        title_extra_sep = " - "
+        title = fields_from_title["titles"][0]
+        if title_extra_sep in title:
+            fields_from_title["titles"].extend(title.split(title_extra_sep))
         extras_categorised = {}
         for extra in extras:
             if "release" in extra.lower():
