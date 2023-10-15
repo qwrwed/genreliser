@@ -192,6 +192,9 @@ class MusicFile(Generic[GenreliserType]):
         ]
         self.genre_exclusions = set()
 
+    def __repr__(self) -> str:
+        return f"<{self.__module__}.{self.__class__.__name__} '{self.filepath}'>"
+
     @cached_property
     def acoustid(self):
         try:
