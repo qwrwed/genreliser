@@ -10,7 +10,6 @@ class ArgsNamespace(argparse.Namespace):
     paths: list[Path]
     # dry_run: bool
     logging_config_path: Path
-    batch_file: Path | None
     json_data_path: Path
     failed_files_path: Path
     retry: Literal["failed", "passed", "all"] | None
@@ -21,21 +20,13 @@ def get_args():
 
     parser = argparse.ArgumentParser()
 
-    path_group = parser.add_mutually_exclusive_group(required=True)
-    path_group.add_argument(
+    parser.add_argument(
         "paths",
         metavar="FILES_OR_FOLDERS",
         type=Path,
         nargs="*",
         default=[],
-        help="path(s) to music file(s) or folder(s)",
-    )
-    path_group.add_argument(
-        "-a",
-        "--batch-file",
-        metavar="PATH",
-        type=Path,
-        help="path to text file containing one music file path per line",
+        help="path(s) to: music file(s), folder(s), or file(s) containing list of paths",
     )
 
     parser.add_argument(
@@ -82,8 +73,14 @@ def get_args():
 
     args = parser.parse_args(namespace=ArgsNamespace())
 
-    if args.batch_file is not None:
-        args.paths.extend(read_list_from_file(args.batch_file, element_fn=Path))
-        args.batch_file = None
+    paths_new = []
+    for path in args.paths:
+        if not path.is_file():
+            paths_new.append(path)
+        try:
+            paths_new.extend(read_list_from_file(path, element_fn=Path))
+        except UnicodeDecodeError:
+            paths_new.append(path)
+    args.paths = paths_new
 
     return args
