@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 
 from utils_python import dump_data
