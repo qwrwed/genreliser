@@ -15,6 +15,7 @@ from utils_python import (
     make_get_request_to_url,
     print_tqdm,
     run_on_path,
+    run_on_paths,
 )
 
 from genreliser.acoustid_ import AcoustIDNotFoundError, get_acoustid
@@ -138,6 +139,16 @@ class BaseGenreliser:
     ):
         return run_on_path(
             path,
+            file_callback=self.genrelise_file,
+            # dir_callback=self.run_on_dir,
+        )
+
+    def genrelise_paths(
+        self,
+        paths: list[Path],
+    ):
+        return run_on_paths(
+            paths,
             file_callback=self.genrelise_file,
             # dir_callback=self.run_on_dir,
         )

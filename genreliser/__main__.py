@@ -50,8 +50,7 @@ def main():
         overwrite=True,
         default_encode=str,
     ):
-        for path in args.paths:
-            genreliser.genrelise_path(path)
+        genreliser.genrelise_paths(args.paths)
 
 
 if __name__ == "__main__":
