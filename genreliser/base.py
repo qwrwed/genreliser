@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from contextlib import nullcontext
 from functools import cached_property
 from pathlib import Path
 from pprint import pformat
@@ -89,8 +90,9 @@ class BaseGenreliser:
     def genrelise_file(
         self,
         filepath: Path,
+        use_log_prefix=True,
     ):
-        with logPrefixFilter(LOGGER, msg_prefix=f"['{filepath.name}']: "):
+        with logPrefixFilter(LOGGER, msg_prefix=f"['{filepath.name}']: ") if use_log_prefix else nullcontext():
             LOGGER.info("starting...")
 
             if filepath in self.failed_files:
