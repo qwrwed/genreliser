@@ -7,3 +7,6 @@ packages = ["genreliser"]
 
 [project.scripts]
 genrelise = "genreliser.__main__:main"
+
+[tool.isort]
+profile = "black"

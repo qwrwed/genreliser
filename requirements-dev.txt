@@ -1,5 +1,6 @@
 black
-pylint
+isort
 mypy
-types-tqdm
+pylint
 types-beautifulsoup4
+types-tqdm
