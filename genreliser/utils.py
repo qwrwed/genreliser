@@ -1,11 +1,30 @@
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 
+import unidecode
 from utils_python import dump_data
 from yt_dlp.utils import sanitize_filename
 
 LOGGER = logging.getLogger("genreliser")
+
+
+def char_filter(string):
+    # https://stackoverflow.com/a/46041974
+    latin = re.compile("[a-zA-Z]+")
+    for char in unicodedata.normalize("NFC", string):
+        decoded = unidecode.unidecode(char)
+        if latin.match(decoded):
+            yield char
+        else:
+            yield decoded
+
+
+def clean_string(string):
+    # https://stackoverflow.com/a/46041974
+    return "".join(char_filter(string))
 
 
 def ensure_one(l, allow_zero=False):

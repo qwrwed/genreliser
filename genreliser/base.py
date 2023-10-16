@@ -19,7 +19,7 @@ from utils_python import (
 
 from genreliser.acoustid_ import AcoustIDNotFoundError, get_acoustid
 from genreliser.resolve import resolve_genre_list
-from genreliser.utils import combine_listdicts
+from genreliser.utils import clean_string, combine_listdicts
 
 LOGGER = logging.getLogger("genreliser")
 
@@ -337,13 +337,15 @@ class MusicFile(Generic[GenreliserType]):
             return fields_from_title
         extras = []
 
+        tag_title_clean = clean_string(self.tag_title)
+
         def capture_and_kill(match: re.Match):
             # https://stackoverflow.com/a/36196325
             extras.extend([m for m in match.groups() if m is not None])
             return ""
 
         tag_title_no_extras = re.sub(
-            r"\s+\[([^\]]+)]|\s+\(([^)]+)\)", capture_and_kill, self.tag_title
+            r"\s+\[([^\]]+)]|\s+\(([^)]+)\)", capture_and_kill, tag_title_clean
         )
         while "  " in tag_title_no_extras:
             tag_title_no_extras = tag_title_no_extras.replace("  ", " ")
