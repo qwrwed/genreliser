@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-import itertools
 import logging
 import re
 from difflib import SequenceMatcher
 from functools import cache, cached_property
 from pathlib import Path
 from pprint import pformat
-from unittest import result
-from urllib.parse import quote, urlparse, urlunparse
+from urllib.parse import quote
 
 import fandom
-from bs4 import BeautifulSoup
 from fandom.error import PageError
-from utils_python import (
-    copy_signature,
-    deduplicate,
-    ensure_caps,
-    flatten,
-    make_get_request_to_url,
-    print_tqdm,
-)
+from utils_python import copy_signature, deduplicate, flatten, print_tqdm
 
 from genreliser.base import LOGGER, BaseGenreliser, MusicFile
+from genreliser.fandom_ import EnhancedFandomPage
 from genreliser.utils import ensure_one
 
 print_std = print
@@ -54,22 +45,9 @@ class MultipleResultsError(Exception):
     ...
 
 
-@cache
-def get_monstercat_wiki_html(url: str):
-    end = "?" if url.endswith("?") else ""
-    url_parsed = urlparse(url)
-    path = quote(url_parsed.path + end)  # workaround for special characters in url
-    url = urlunparse(url_parsed._replace(path=path))
-    html = make_get_request_to_url(url, "monstercat_wiki")
-    return html
-
-
-broke = False
-
-
 def log_monstercat_search_string(query):
     LOGGER.info(
-        "search_query = 'https://monstercat.fandom.com/wiki/Special:Search?query=%s'",
+        "search query = 'https://monstercat.fandom.com/wiki/Special:Search?query=%s'",
         quote(query),
     )
 
@@ -81,17 +59,9 @@ SearchResult = tuple[str, int]
 
 
 def get_wiki_page(page: str | int | fandom.FandomPage):
-    if isinstance(page, str):
-        try:
-            return fandom.page(title=page)
-        except KeyError:
-            raise ValueError(f"Could not find fandom.page with title={page!r}")
-    elif isinstance(page, int):
-        try:
-            return fandom.page(pageid=page)
-        except KeyError:
-            raise ValueError(f"Could not find fandom.page with pageid={page!r}")
-    elif isinstance(page, fandom.FandomPage):
+    if isinstance(page, (str, int)):
+        return EnhancedFandomPage(page)
+    elif isinstance(page, EnhancedFandomPage):
         return page
     raise TypeError(f"Cannot get FandomPage from {page}")
 
@@ -102,40 +72,34 @@ class MonstercatWikiPageInfo(dict):
     def __init__(
         self, page: str | int | fandom.FandomPage, search_query: str | None = None
     ) -> None:
-        page_object = get_wiki_page(page)
-
+        page = get_wiki_page(page)
         __normalize = lambda s: s.replace('"', "").lower()
         if search_query is None:
             query_similarity = None
         else:
             query_similarity = SequenceMatcher(
-                None, __normalize(search_query), __normalize(page_object.title)
+                None, __normalize(search_query), __normalize(page.title)
             ).ratio()
 
-        html = get_monstercat_wiki_html(page_object.url)
-        try:
-            "disambiguation" in html
-        except TypeError:
-            breakpoint()
-
-        if "disambiguation" in html:
+        if "disambiguation" in page.html:
             page_type = "disambiguation"
         else:
-            soup = BeautifulSoup(html, "html.parser")
-            if soup.find_all("li", {"class": "category normal", "data-name": "Songs"}):
+            if page.soup.find_all(
+                "li", {"class": "category normal", "data-name": "Songs"}
+            ):
                 page_type = "song"
             else:
                 page_type = "unknown"
 
+        is_exact_match = query_similarity in {None, 1.0}
+
         super().__init__(
             {
-                "page": page_object,
-                "id": page_object.pageid,
-                "title": page_object.title,
-                "url": page_object.url,
+                "page": page,
                 "query": search_query,
                 "query_similarity": query_similarity,
                 "type": page_type,
+                "is_exact_match": is_exact_match,
             }
         )
 
@@ -169,15 +133,23 @@ class MonstercatWikiPageInfo(dict):
 def get_all_pages_from_title(
     title: str, disambiguators: list[str]
 ) -> list[MonstercatWikiPageInfo]:
+    fandom.set_wiki("Monstercat")
+
     titles_to_search = [
         f"{title} ({disambiguator})" for disambiguator in disambiguators
     ]
-    fandom.set_wiki("Monstercat")
+
     try:
-        page_info = MonstercatWikiPageInfo(title)
+        page = EnhancedFandomPage(title)
+        page_info = MonstercatWikiPageInfo(page)
         if page_info["type"] == "song":
             return [page_info]
+        elif page_info["type"] == "disambiguation":
+            LOGGER.info("Found disambiguation page; will search with disambiguators")
     except PageError:
+        LOGGER.info(
+            "Did not find page; will search for title, then search with disambiguators"
+        )
         titles_to_search.insert(0, f'"{title}"')
         titles_to_search.insert(0, f"{title}")
 
@@ -190,6 +162,8 @@ def get_all_pages_from_title(
         for _title, page_id in search_results:
             page_info = MonstercatWikiPageInfo(page_id, search_query=title_searched)
             if page_info["type"] == "song":
+                if page_info["is_exact_match"]:
+                    return [page_info]
                 page_infos.append(page_info)
 
     return page_infos
@@ -197,7 +171,10 @@ def get_all_pages_from_title(
 
 def get_page_from_titles(
     titles: list[str], disambiguators: list[str]
-) -> MonstercatWikiPageInfo:
+) -> EnhancedFandomPage:
+    """
+    Returns the closest page match given a list of possible titles and disambiguators
+    """
     LOGGER.info("Finding page for titles=%s, disambiguators=%s", titles, disambiguators)
     page_infos = sorted(
         flatten([get_all_pages_from_title(title, disambiguators) for title in titles]),
@@ -207,21 +184,21 @@ def get_page_from_titles(
         raise WikiPageNotFoundError(f"No page found")
 
     exact_matches = [
-        page_info for page_info in page_infos if page_info["query"] is None
+        page_info for page_info in page_infos if page_info["is_exact_match"]
     ]
     if len(exact_matches) > 1:
         raise NotImplementedError(f"Multiple exact matches found: {exact_matches}")
 
     page_info = page_infos[0]
-    match_type = "exact" if page_info["query"] is None else "best"
+    match_type = "exact" if page_info["is_exact_match"] else "best"
     LOGGER.info("Found %s match: %s", match_type, page_info)
 
-    return page_info
+    return page_info["page"]
 
 
 def get_page_from_known_fields(
     known_fields: dict[str, list[str] | dict[str, list[str]]]
-) -> MonstercatWikiPageInfo:
+) -> EnhancedFandomPage:
     fandom.set_wiki("Monstercat")
     titles = known_fields["titles"]
     try:
@@ -240,15 +217,14 @@ def get_page_from_known_fields(
     if include_artist:
         disambiguators.append(artist)
 
-    page_info = get_page_from_titles(titles, disambiguators)
-    return page_info
+    page = get_page_from_titles(titles, disambiguators)
+    return page
 
 
 @cache
-def get_genres_from_monstercat_page(page_info: MonstercatWikiPageInfo):
-    main_soup = BeautifulSoup(page_info["page"].html, "html.parser")
+def get_genres_from_monstercat_page(page: EnhancedFandomPage):
     genres_found = []
-    for genre_section_soup in main_soup.find_all(
+    for genre_section_soup in page.soup.find_all(
         "div", {"data-source": re.compile(".*[gG]enre.*")}
     ):
         for genre_soup in genre_section_soup.find_all("a"):
@@ -259,10 +235,9 @@ def get_genres_from_monstercat_page(page_info: MonstercatWikiPageInfo):
 
 
 @cache
-def get_titles_from_monstercat_page(page_info: MonstercatWikiPageInfo):
-    main_soup = BeautifulSoup(page_info["page"].html, "html.parser")
+def get_titles_from_monstercat_page(page: EnhancedFandomPage):
     results = []
-    for sub_soup in main_soup.find_all(attrs={"data-source": "Name"}):
+    for sub_soup in page.soup.find_all(attrs={"data-source": "Name"}):
         for content in sub_soup.contents:
             if content not in results:
                 if isinstance(content, str):
@@ -288,11 +263,11 @@ class MonstercatGenreliser(BaseGenreliser):
         self.wiki_resolutions = {}  # type: dict[tuple[Title, Artist], Url]
 
     def get_fields_from_monstercat_wiki(self, known_fields: dict[str, list[str]]):
-        page_info = get_page_from_known_fields(known_fields)
+        page = get_page_from_known_fields(known_fields)
         fields = {
-            "titles": get_titles_from_monstercat_page(page_info),
-            "genres": get_genres_from_monstercat_page(page_info),
-            "extras": {"wiki_url": [page_info["url"]]},
+            "titles": get_titles_from_monstercat_page(page),
+            "genres": get_genres_from_monstercat_page(page),
+            "extras": {"wiki_url": [page.url]},
         }
         LOGGER.info("got fields from monstercat wiki: %s", fields)
         return fields
