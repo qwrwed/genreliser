@@ -253,11 +253,14 @@ def get_titles_from_monstercat_page(page: EnhancedFandomPage):
         results = ["".join(results)]
     return results
 
+
 def get_artists_from_monstercat_page(page: EnhancedFandomPage):
     raise NotImplementedError
 
+
 def get_albums_from_monstercat_page(page: EnhancedFandomPage):
     raise NotImplementedError
+
 
 Title = str
 Artist = str
