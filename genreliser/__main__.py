@@ -43,7 +43,7 @@ def main():
     )
 
     if args.readonly:
-        data_ctx = failed_ctx = nullcontext()
+        data_ctx = failed_ctx = nullcontext
     else:
         data_ctx = partial(
             write_at_exit,
@@ -60,7 +60,7 @@ def main():
             default_encode=str,
         )
 
-    with data_ctx, failed_ctx:
+    with data_ctx(), failed_ctx():
         genreliser.genrelise_paths(args.paths)
 
 
