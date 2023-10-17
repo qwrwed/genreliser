@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
+from functools import partial
 from pathlib import Path
 
 from utils_python import (
@@ -39,17 +41,26 @@ def main():
     genreliser = MonstercatGenreliser(
         previous_failed_files, previous_json_data, args.retry
     )
-    with write_at_exit(
-        genreliser.json_data,
-        args.json_data_path,
-        overwrite=True,
-        default_encode=str,
-    ), write_at_exit(
-        genreliser.failed_files,
-        args.failed_files_path,
-        overwrite=True,
-        default_encode=str,
-    ):
+
+    if args.readonly:
+        data_ctx = failed_ctx = nullcontext()
+    else:
+        data_ctx = partial(
+            write_at_exit,
+            genreliser.json_data,
+            args.json_data_path,
+            overwrite=True,
+            default_encode=str,
+        )
+        failed_ctx = partial(
+            write_at_exit,
+            genreliser.failed_files,
+            args.failed_files_path,
+            overwrite=True,
+            default_encode=str,
+        )
+
+    with data_ctx, failed_ctx:
         genreliser.genrelise_paths(args.paths)
 
 

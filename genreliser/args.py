@@ -15,6 +15,7 @@ class ArgsNamespace(argparse.Namespace):
     json_data_path: Path
     failed_files_path: Path
     retry: Literal["failed", "passed", "all"] | None
+    readonly: bool
 
 
 def get_args():
@@ -71,7 +72,10 @@ def get_args():
         help="retry some or all previous files",
     )
 
-    # TODO: readonly mode?
+    parser.add_argument(
+        "--readonly",
+        action="store_true",
+    )
 
     args = parser.parse_args(namespace=ArgsNamespace())
 
