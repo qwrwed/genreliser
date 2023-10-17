@@ -33,6 +33,7 @@ def pprint(x):
 
 PATTERN_GENRE_FROM_DESCRIPTION = r"^.*?Genre:\s*(?P<genres>.+?)\s*$"
 PATTERN_GENRES_FROM_LINE = r"#(\w+)"
+PATTERN_FEAT_FROM_ARTIST = r"^(.+?)(?: f(?:ea)?t\.? (.+))?$"
 
 SUFFIX_TAG_FUNCTIONS = {".m4a": EasyMP4}
 
@@ -373,11 +374,20 @@ class MusicFile(Generic[GenreliserType]):
                 continue
             if field_match := match.group(field_name):
                 fields_from_title[f"{field_name}s"] = [field_match]
-        title_extra_sep = " - "
+
+        extras_categorised = {}
+
+        fields_from_title["artists"][0], feat = re.search(
+            PATTERN_FEAT_FROM_ARTIST, fields_from_title["artists"][0]
+        ).groups()
+        if feat:
+            extras_categorised.setdefault("feat", []).append(feat)
+
         title = fields_from_title["titles"][0]
+        title_extra_sep = " - "
         if title_extra_sep in title:
             fields_from_title["titles"].extend(title.split(title_extra_sep))
-        extras_categorised = {}
+
         for extra in extras:
             if "release" in extra.lower():
                 extras_categorised.setdefault("release", []).append(extra)
