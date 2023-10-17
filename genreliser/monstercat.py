@@ -208,7 +208,7 @@ def get_page_from_known_fields(
     fandom.set_wiki("Monstercat")
     titles = known_fields["titles"]
     try:
-        artist = ensure_one(known_fields["artists"])
+        artist = ensure_one(known_fields.get("artists", []), allow_zero=True)
     except NotImplementedError as exc:
         breakpoint()
         pass
@@ -220,7 +220,7 @@ def get_page_from_known_fields(
         disambiguators.extend(
             [extra for extra in extras_values if "monstercat" not in extra.lower()]
         )
-    if include_artist:
+    if artist and include_artist:
         disambiguators.append(artist)
 
     page = get_page_from_titles(titles, disambiguators)
@@ -304,7 +304,7 @@ class MonstercatMusicFile(MusicFile[MonstercatGenreliser]):
     @cached_property
     def fields_from_wiki(self):
         fields_combined = self.fields_combined
-        for required_field in ["titles", "artists"]:
+        for required_field in ["titles"]:
             if required_field not in fields_combined:
                 raise ValueError(f"{required_field=} missing from {fields_combined=}")
         return self.genreliser.get_fields_from_monstercat_wiki(fields_combined)
