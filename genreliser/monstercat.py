@@ -139,6 +139,8 @@ def get_all_pages_from_title(
         f"{title} ({disambiguator})" for disambiguator in disambiguators
     ]
 
+    page_infos: list[MonstercatWikiPageInfo] = []
+
     try:
         page = EnhancedFandomPage(title)
         page_info = MonstercatWikiPageInfo(page)
@@ -146,14 +148,17 @@ def get_all_pages_from_title(
             return [page_info]
         elif page_info["type"] == "disambiguation":
             LOGGER.info("Found disambiguation page; will search with disambiguators")
+        else:
+            LOGGER.warning(
+                "Found unknown page type %s; including in results anyway.", page.url
+            )
+            page_infos.append(page_info)
     except PageError:
         LOGGER.info(
             "Did not find page; will search for title, then search with disambiguators"
         )
         titles_to_search.insert(0, f'"{title}"')
         titles_to_search.insert(0, f"{title}")
-
-    page_infos: list[MonstercatWikiPageInfo] = []
 
     for title_searched in titles_to_search:
         try:
