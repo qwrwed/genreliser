@@ -249,6 +249,11 @@ def get_titles_from_monstercat_page(page: EnhancedFandomPage):
         results = ["".join(results)]
     return results
 
+def get_artists_from_monstercat_page(page: EnhancedFandomPage):
+    raise NotImplementedError
+
+def get_albums_from_monstercat_page(page: EnhancedFandomPage):
+    raise NotImplementedError
 
 Title = str
 Artist = str
@@ -269,6 +274,8 @@ class MonstercatGenreliser(BaseGenreliser):
         fields = {
             "titles": get_titles_from_monstercat_page(page),
             "genres": get_genres_from_monstercat_page(page),
+            # "artists": get_artists_from_monstercat_page(page),
+            # "albums": get_albums_from_monstercat_page(page),
             "extras": {"wiki_url": [page.url]},
         }
         LOGGER.info("got fields from monstercat wiki: %s", fields)
