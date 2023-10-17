@@ -204,7 +204,8 @@ class MusicFile(Generic[GenreliserType]):
     def __repr__(self) -> str:
         return f"<{self.__module__}.{self.__class__.__name__} '{self.filepath}'>"
 
-    @cached_property
+    # @cached_property
+    @property
     def acoustid(self):
         try:
             self.acoustid_fields = get_acoustid(self.filepath)
@@ -213,7 +214,8 @@ class MusicFile(Generic[GenreliserType]):
             LOGGER.warning(exc, exc_info=1)
             return None
 
-    @cached_property
+    # @cached_property
+    @property
     def fields_from_acousticbrainz(self):
         if self.acoustid is None:
             return {}
@@ -245,7 +247,8 @@ class MusicFile(Generic[GenreliserType]):
         LOGGER.info("got fields from acousticbrainz: %s", res_tags_filtered)
         return res_tags_filtered
 
-    @cached_property
+    # @cached_property
+    @property
     def fields_from_musicbrainz(self):
         if self.acoustid is None:
             return {}
@@ -300,7 +303,8 @@ class MusicFile(Generic[GenreliserType]):
         LOGGER.info("got fields from musicbrainz: %s", res_tags_processed)
         return res_tags_processed
 
-    @cached_property
+    # @cached_property causes memory leak
+    @property
     def fields_from_description(self):
         match = re.search(
             self.genreliser.description_pattern_genre,
@@ -324,7 +328,8 @@ class MusicFile(Generic[GenreliserType]):
         LOGGER.info("got fields from description: %s", res)
         return res
 
-    @cached_property
+    # @cached_property causes memory_leak
+    @property
     def fields_from_tags(self):
         fields = {}
         for field_name in ["genre", "artist", "title"]:

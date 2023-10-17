@@ -221,7 +221,7 @@ def get_page_from_known_fields(
     return page
 
 
-@cache
+# @cache
 def get_genres_from_monstercat_page(page: EnhancedFandomPage):
     genres_found = []
     for genre_section_soup in page.soup.find_all(
@@ -234,7 +234,7 @@ def get_genres_from_monstercat_page(page: EnhancedFandomPage):
     return deduplicate(genres_found)
 
 
-@cache
+# @cache
 def get_titles_from_monstercat_page(page: EnhancedFandomPage):
     results = []
     for sub_soup in page.soup.find_all(attrs={"data-source": "Name"}):

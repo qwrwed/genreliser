@@ -19,7 +19,7 @@ def resolve_language(language: str):
     return language or fandom.fandom.LANG or "en"
 
 
-@fandom.util.cache
+# @fandom.util.cache
 def search(
     query: str,
     wiki: str = fandom.fandom.WIKI,
@@ -48,16 +48,16 @@ def search(
 
 
 class EnhancedFandomPage(FandomPage):
-    instances_by_title: dict[int, EnhancedFandomPage] = {}
-    instances_by_id: dict[str, EnhancedFandomPage] = {}
+    # instances_by_title_cache: dict[int, EnhancedFandomPage] = {}
+    # instances_by_id_cache: dict[str, EnhancedFandomPage] = {}
 
     def __new__(cls, identifier: str | int, **_kwargs):
         # average time complexity is O(1), so just look in
         #  both dicts and return a new instance if not found
         return (
-            cls.instances_by_title.get(identifier)
-            or cls.instances_by_id.get(identifier)
-            or super().__new__(cls)
+            # cls.instances_by_title_cache.get(identifier)
+            # or cls.instances_by_id_cache.get(identifier) or
+            super().__new__(cls)
         )
 
     def __init__(
@@ -88,8 +88,8 @@ class EnhancedFandomPage(FandomPage):
             preload,
         )
 
-        self.instances_by_id[self.pageid] = self
-        self.instances_by_title[self.title] = self
+        # self.instances_by_id_cache[self.pageid] = self
+        # self.instances_by_title_cache[self.title] = self
 
     def __hash__(self) -> int:
         # allows pages to be used in places that require hashable values
@@ -111,7 +111,7 @@ class EnhancedFandomPage(FandomPage):
         except fandom.error.PageError:
             self.title, title_old = ensure_caps(self.title), self.title
             super()._FandomPage__load(redirect, preload)
-            self.instances_by_title[title_old] = self
+            # self.instances_by_title_cache[title_old] = self
         self.url = STANDARD_URL.format(
             lang=self.language, wiki=self.wiki, page=quote(self.title)
         )
@@ -120,12 +120,14 @@ class EnhancedFandomPage(FandomPage):
     def id(self):
         return self.pageid
 
-    @cached_property
+    # @cached_property
+    @property
     def html(self):
         # now cached
         return super().html
 
-    @cached_property
+    # @cached_property
+    @property
     def soup(self):
         # now a cached property
         return BeautifulSoup(self.html, "html.parser")
