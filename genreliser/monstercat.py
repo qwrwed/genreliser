@@ -158,7 +158,9 @@ def get_all_pages_from_title(
     for title_searched in titles_to_search:
         log_monstercat_search_string(title_searched)
         search_results: list[SearchResult] = fandom.search(title_searched)
-
+        # TODO: retry if network failure:
+        # socket.gaierror: [Errno -3] Temporary failure in name resolution
+        # requests.exceptions.ConnectionError: HTTPSConnectionPool(host='monstercat.fandom.com', port=443): Max retries exceeded with url: /en/api.php?action=query&srlimit=10&list=search&srsearch=Just+Dance+%28Pegboard+Nerds%29&format=json (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0xeaca9a90>: Failed to resolve 'monstercat.fandom.com' ([Errno -3] Temporary failure in name resolution)"))
         for _title, page_id in search_results:
             page_info = MonstercatWikiPageInfo(page_id, search_query=title_searched)
             if page_info["type"] == "song":
