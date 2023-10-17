@@ -417,4 +417,5 @@ class MusicFile(Generic[GenreliserType]):
         )
         if genres_resolved:
             fields_combined["genres"] = genres_resolved
+        fields_combined["sources"] = self.sources
         return fields_combined
