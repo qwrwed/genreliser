@@ -74,8 +74,6 @@ class BaseGenreliser:
 
         self.retry = retry
 
-        # self.file_cache: dict[Path, MusicFile] = {}
-
     @property
     def results(self):
         return {
