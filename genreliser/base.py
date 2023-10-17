@@ -377,11 +377,12 @@ class MusicFile(Generic[GenreliserType]):
 
         extras_categorised = {}
 
-        fields_from_title["artists"][0], feat = re.search(
-            PATTERN_FEAT_FROM_ARTIST, fields_from_title["artists"][0]
-        ).groups()
-        if feat:
-            extras_categorised.setdefault("feat", []).append(feat)
+        if artist_fields := fields_from_title.get("artists"):
+            artist_fields[0], feat = re.search(
+                PATTERN_FEAT_FROM_ARTIST, artist_fields[0]
+            ).groups()
+            if feat:
+                extras_categorised.setdefault("feat", []).append(feat)
 
         title = fields_from_title["titles"][0]
         title_extra_sep = " - "
