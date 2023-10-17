@@ -303,12 +303,7 @@ class MonstercatMusicFile(MusicFile[MonstercatGenreliser]):
         fields_combined = self.fields_combined
         for required_field in ["titles", "artists"]:
             if required_field not in fields_combined:
-                LOGGER.error(
-                    "required field '%s' missing from fields_combined=%s",
-                    required_field,
-                    fields_combined,
-                )
-                return {}
+                raise ValueError(f"{required_field=} missing from {fields_combined=}")
         return self.genreliser.get_fields_from_monstercat_wiki(fields_combined)
 
     def get_fields_from_sources(self):
